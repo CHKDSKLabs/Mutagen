@@ -10,9 +10,10 @@ defines the document types, the order they are authored in, and how they
 hand off to one another, so that work can later be sliced into units an
 agent can execute reliably.
 
-**Scope of this first pass:** overview of the `PRD → ADR → DDD → ISC → DSD`
-pipeline only. Templates, authoring guides, review gates, agent prompts,
-and the slicing procedure itself will be added in subsequent passes.
+The workflow flows **`PRD → ADR → DDD → ISC → DSD → Slicing`**. Templates
+for all five documents live under [`templates/`](templates/); the slicing
+step is owned by the [Shredder](agents/Shredder.md) agent, which consumes
+the completed bundle and dispatches agent-executable tasks.
 
 ## The five documents
 
@@ -96,10 +97,106 @@ until the source is stable). Dotted arrows are cross-cutting influences
    DDD, or ISC; impact must be tracked explicitly and the affected
    documents re-reviewed.
 
+## Templates & authoring guides
+
+Each of the five upstream documents has a **template** (the shape) and an
+**authoring-and-review guide** (how to fill it well and how to review it).
+Templates live in [`templates/`](templates/); guides in
+[`guides/`](guides/). Start with [`guides/README.md`](guides/README.md) for
+the shared principles.
+
+| Doc | Template | Guide |
+|-----|----------|-------|
+| PRD | [`templates/PRD-template.md`](templates/PRD-template.md) | [`guides/PRD-guide.md`](guides/PRD-guide.md) |
+| ADR | [`templates/ADR-template.md`](templates/ADR-template.md) | [`guides/ADR-guide.md`](guides/ADR-guide.md) |
+| DDD | [`templates/DDD-template.md`](templates/DDD-template.md) | [`guides/DDD-guide.md`](guides/DDD-guide.md) |
+| ISC | [`templates/ISC-template.md`](templates/ISC-template.md) | [`guides/ISC-guide.md`](guides/ISC-guide.md) |
+| DSD | [`templates/DSD-template.md`](templates/DSD-template.md) | [`guides/DSD-guide.md`](guides/DSD-guide.md) |
+
+## From idea to shipped slice
+
+Design starts with **April**, the reporter. She interviews the user
+and iteratively drafts the five upstream documents into the project's
+document tree using the templates in [`templates/`](templates/).
+Nothing advances until the user explicitly marks each document
+Approved and hands the bundle to Shredder.
+
+Once the five upstream documents are approved, the **Shredder** agent
+consumes the bundle, validates it for cross-document conflicts, and
+produces a dependency-ordered slice queue. Shredder hands that queue
+to **Karai**, the execution supervisor, who dispatches each slice in
+order to the assigned execution agent (Bebop, Baxter, Tatsu, or
+Krang), validates every returned output against the contract that
+agent is bound to, sends the slice through **Bishop** for
+principal-level review and **Tiger Claw** for adversarial QA,
+verifies the state file was updated, and escalates to the human the
+moment conformance breaks.
+
+| Agent | Role | File |
+|-------|------|------|
+| April | Design-phase elicitor & document author (upstream of Shredder) | [`agents/April.md`](agents/April.md) |
+| Shredder | Slicer & queue author | [`agents/Shredder.md`](agents/Shredder.md) |
+| Karai | Execution supervisor & dispatcher | [`agents/Karai.md`](agents/Karai.md) |
+| Traag | Filesystem scope enforcer (cross-cutting) | [`agents/Traag.md`](agents/Traag.md) |
+| Krang | Infrastructure & DevOps (Layer 1, deploy L6) | [`agents/Krang.md`](agents/Krang.md) |
+| Baxter | Math-heavy / algorithmic execution | [`agents/Baxter.md`](agents/Baxter.md) |
+| Tatsu | Security-minded execution (Layer 3 + security-critical cross-cutting) | [`agents/Tatsu.md`](agents/Tatsu.md) |
+| Chaplin | Data / schema specialist (non-trivial L2 + data-migration L6) | [`agents/Chaplin.md`](agents/Chaplin.md) |
+| Metalhead | Observability engineer (L1 scaffold, instrumentation, SLO / alerts / dashboards) | [`agents/Metalhead.md`](agents/Metalhead.md) |
+| Splinter | Technical writer (human-facing docs derived from shipped code and state) | [`agents/Splinter.md`](agents/Splinter.md) |
+| Bebop | Standard execution (Layers 2 trivial, 4, 5, non-deploy L6) | [`agents/Bebop.md`](agents/Bebop.md) |
+| Bishop | Principal-level code review (post-structural, pre-QA) | [`agents/Bishop.md`](agents/Bishop.md) |
+| Tiger Claw | Adversarial QA (post-review, pre-completion) | [`agents/TigerClaw.md`](agents/TigerClaw.md) |
+
+The flow is **User ↔ April → Shredder → Karai → {Bebop | Baxter |
+Chaplin | Metalhead | Splinter | Tatsu | Krang} → Karai (structural)
+→ Bishop (review) → Tiger Claw (adversarial) → Karai → next slice**,
+with **Traag** wrapping every filesystem mutation any agent attempts. April owns design-phase
+elicitation and authoring; Bishop runs before Tiger Claw so cycles
+are not spent attacking code a principal-engineer reviewer would
+reject on sight; a Block verdict from Bishop halts the slice and
+routes back to the author via Shredder re-slice. Tatsu owns Layer 3 by default and any slice
+whose Traces-to touches a security-critical surface (Security /
+External Integration / Data Integrity ISCs, security / privacy NFRs,
+PII / credential / secret / audit DDD elements, or trust-boundary
+crossings). Shredder's slicing order follows a 6-layer
+dependency hierarchy (Foundation → Data → Security → Logic → Interface
+→ Features) and groups slices within each layer by DDD bounded
+context. Every slice cites the specific `[FR-*]`, `[NFR-*]`, `ADR-N`,
+DDD element, `[ISC-NNN]`, and `[DSD-###]` it touches — and Karai
+enforces that every returned output preserves those citations and
+upholds every cited invariant before the queue advances.
+
+Traag closes the scope-security gap that raw harness permissions cannot
+express: instead of "allow all writes" or "prompt on every write,"
+Traag evaluates each `Write` / `Edit` / delete against a per-slice
+scope manifest plus a global denylist (secrets, `.git`, lock files,
+infra config outside Krang's slices, upstream design artifacts). Deny
+is the default on any ambiguity; a DENY blocks the mutation and fires
+as a Red inspection outcome in Karai, halting the slice and surfacing
+the Violation Report to the human. There is no "just this once"
+override — amendments happen upstream by amending the manifest or
+re-slicing via Shredder.
+
 ## Status
 
 - [x] Workflow overview (this document)
-- [ ] Per-document templates
-- [ ] Authoring and review guides
-- [ ] Agent prompts and playbooks
-- [ ] Slicing procedure for agent-executable work units
+- [x] PRD template
+- [x] ADR template
+- [x] DDD template
+- [x] ISC template
+- [x] DSD template
+- [x] Design-phase elicitor (April)
+- [x] Slicing procedure (Shredder)
+- [x] Execution supervisor (Karai)
+- [x] Scope enforcer (Traag)
+- [x] Krang agent (infra / deploy)
+- [x] Baxter agent (algorithmic execution)
+- [x] Tatsu agent (security-minded execution, Layer 3)
+- [x] Chaplin agent (data / schema specialist, non-trivial Layer 2)
+- [x] Metalhead agent (observability engineer)
+- [x] Splinter agent (technical writer)
+- [x] Bebop agent (standard execution)
+- [x] Code reviewer (Bishop)
+- [x] Adversarial QA (Tiger Claw)
+- [x] Authoring and review guides (PRD · ADR · DDD · ISC · DSD)
