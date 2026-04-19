@@ -46,7 +46,7 @@ spec. Break these and things fail in ways that are confusing to debug.
 
 **Last reviewed:** YYYY-MM-DD
 **Owners:** <team or individuals responsible for keeping this current>
-**Related docs:** [PRD](./PRD.md) · [ADR](./ADR.md) · [DDD](./DDD.md)
+**Related docs:** *update at instantiation — e.g.* `docs/PRD.md`, `docs/ADR/ADR-NNNN-…md`, `docs/DDD.md`
 ```
 
 ---
