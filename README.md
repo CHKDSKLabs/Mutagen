@@ -178,6 +178,84 @@ the Violation Report to the human. There is no "just this once"
 override — amendments happen upstream by amending the manifest or
 re-slicing via Shredder.
 
+## Using this as a Claude Code plugin
+
+This repository is packaged as a Claude Code plugin so a new project
+can adopt the entire workflow — all thirteen subagents, scope
+enforcement, and slash commands — in one step.
+
+### Install
+
+```bash
+# From this git repo (replace <git-url> with the clone URL)
+claude plugin install <git-url>
+
+# Or from a local checkout, for development
+claude --plugin-dir /path/to/agentic_design_workflow
+```
+
+Verify:
+
+```bash
+claude plugin list
+claude plugin validate
+```
+
+Requires `bash` and `jq` on PATH for the scope-enforcement hook. Without
+`jq` the hook fails open with a warning; set `STRICT_GUARD=1` to fail
+closed instead.
+
+### Session ritual
+
+Four slash commands, namespaced under `shredder:`:
+
+| Command | Purpose |
+|---------|---------|
+| `/shredder:elicit` | Run April to interview you and author / iterate the five upstream documents. |
+| `/shredder:slice` | Run Shredder on the approved bundle to produce a dependency-ordered slice queue at `slices/queue.md`. |
+| `/shredder:execute-next` | Run Karai on the next pending slice — dispatches the assigned executor, routes through Bishop review and Tiger Claw QA, records state. |
+| `/shredder:status` | Read-only report on upstream-document status, queue progress, active slice, gate telemetry, and open escalations. |
+
+Typical rhythm on a new project:
+
+1. **Session 1 — elicit.** `/shredder:elicit` until every upstream doc is Approved / Accepted and April's Readiness Brief returns green across the board.
+2. **Session 2 — slice.** `/shredder:slice` produces the queue.
+3. **Sessions 3…N — execute.** `/shredder:execute-next` per slice. `/shredder:status` any time to check where things are.
+
+### Scope enforcement
+
+A `PreToolUse` hook on `Write` / `Edit` reads `.claude/state/active-slice.json`
+(written by `/shredder:elicit`, `/shredder:slice`, and
+`/shredder:execute-next` before dispatch) and blocks writes outside the
+slice's declared allowlist. A universal denylist also protects the
+design scaffolds (`templates/**`, `guides/**`) and instantiated upstream
+bundle (`docs/PRD*`, `docs/ADR*`, `docs/DDD*`, `docs/ISC*`, `docs/DSD*`
+and repo-root variants) from edits by anyone other than April (or an
+explicit `CLAUDE_WORKFLOW_META=1` override for plugin-internal work).
+
+Blocks return exit code 2 with a stderr message that surfaces to Claude
+as the reason. Extending scope is a deliberate edit to
+`.claude/state/active-slice.json` — there is no "just this once"
+bypass.
+
+### Pipeline modes
+
+Two modes, selected per project via `.claude/workflow.json`:
+
+- **`full`** (default) — Bishop review + Tiger Claw QA on every slice.
+- **`lightweight`** — those gates run only on slices Shredder tags
+  `review_required: true` based on criteria in
+  [`guides/pipeline-modes.md`](guides/pipeline-modes.md) (security,
+  non-trivial data, external-contract changes, production infra,
+  irreversibility, observability contracts, size thresholds, or
+  explicit author opt-in).
+
+Karai's structural conformance, Traag's scope enforcement, and every
+executor's showpiece run in both modes. Lightweight only trims Bishop
+and Tiger Claw. Adopting lightweight mode should be captured as the
+project's first ADR — opinionated template in
+[`guides/pipeline-modes.md`](guides/pipeline-modes.md).
+
 ## Status
 
 - [x] Workflow overview (this document)
@@ -200,3 +278,7 @@ re-slicing via Shredder.
 - [x] Code reviewer (Bishop)
 - [x] Adversarial QA (Tiger Claw)
 - [x] Authoring and review guides (PRD · ADR · DDD · ISC · DSD)
+- [x] Plugin packaging (`.claude-plugin/plugin.json`)
+- [x] Slash commands (`/shredder:elicit` · `/shredder:slice` · `/shredder:execute-next` · `/shredder:status`)
+- [x] Scope-enforcement hook (`hooks/hooks.json` + `scripts/guard.sh`)
+- [x] Pipeline modes — full vs. lightweight ([`guides/pipeline-modes.md`](guides/pipeline-modes.md))
