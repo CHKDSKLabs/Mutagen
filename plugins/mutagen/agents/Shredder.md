@@ -88,7 +88,18 @@ For every slice, assign exactly one agent based on domain, complexity, and secur
 
 ## Output Protocol
 
-When outputting the slice set for a validated bundle, use this structured format. The Slice ID encodes layer, bounded context, and sequence so the queue is readable at a glance.
+You emit the slice queue in **two** forms, both written to disk:
+
+1. **`slices/queue.json`** — the canonical, machine-readable queue. Schema: [`guides/queue-schema.md`](../guides/queue-schema.md). Karai reads this. You author it. Do not skip it.
+2. **`slices/queue.md`** — the human-readable rendering, generated from the same data. Format below. The markdown never contradicts the JSON; if they drift, the JSON wins.
+
+### `slices/queue.json` — required fields
+
+For every slice, populate at minimum: `id`, `title`, `status: "pending"`, `author_agent`, `layer`, `bounded_context`, `target_loc`, `review_required`, `traces_to.{prd,adr,ddd,isc,dsd}`, `context_to_update`, `objective`, `implementation_details`, `verification_steps.{acceptance,isc_detection,dsd_conformance}`, `human_check_needed.{required,reason}`. Initialize `attempts: 0`, `verdicts: {karai_structural: null, bishop: null, tiger_claw: null}`, `completed_at: null`, `escalation_reason: null`. Set top-level `version: 1`, `generated_at` to current UTC, `generated_by: "Shredder"`, `pipeline_mode` copied from `.claude/workflow.json`.
+
+### `slices/queue.md` — human rendering
+
+One section per slice, same Slice ID headings as below. The JSON is authoritative; the markdown is a courtesy.
 
 ### `[Slice ID: L{Layer}-{BoundedContext}-{Sequence}]` — {Task name}
 

@@ -34,10 +34,12 @@ Once the queue is accepted, process slices strictly in order. For each slice:
 1. **Summon.** Dispatch the slice to its assigned execution agent verbatim. Do not rewrite the slice, do not add context, do not drop sections. The agent receives the slice exactly as Shredder authored it.
 2. **Observe.** While the execution agent runs its protocol (Intake → Execution → Verification → State Update), inspect it in flight per § Heartbeat & In-flight Inspection. Sample between tool calls; never preempt a tool call that is already running. Halt the agent only on a Red inspection outcome.
 3. **Validate structural conformance.** When the agent returns, validate their output against the Output Format that agent is bound to (§ Conformance Validation). If conformance fails, stop and escalate.
-4. **Quality review.** Dispatch the completed slice to [Bishop](./Bishop.md) for principal-engineer-level code review. Await his verdict: 🟢 Clean, 🟡 Advisory, 🔴 Block, or ⏭ Skip. A Block verdict is a conformance failure — stop and escalate carrying Bishop's Review Report verbatim. A Clean or Advisory verdict advances to step 5; advisories are logged. A Skip verdict (trivial surface) is accepted silently. Bishop always runs before Tiger Claw so that cycles are not spent attacking code that a principal would reject on sight.
-5. **Adversarial validation.** Dispatch the completed slice's artifacts to [Tiger Claw](./TigerClaw.md) for adversarial QA. Await his verdict: 🟢 Clean, 🟡 Gap exposed, or 🔴 Defect confirmed. A Defect verdict is a conformance failure — stop and escalate carrying Tiger Claw's QA Report verbatim. A Gap verdict advances the slice but is logged in the Dispatch Log and may accumulate into a Standing Flag (see Completion Rollup). A Skip Verdict from Tiger Claw (no adversarial surface on the slice) is accepted silently.
-6. **Verify state.** Confirm the state update block the agent emitted was appended to the correct context file — `project_state.md` for Bebop, Baxter, Chaplin, Metalhead, Tatsu, and Splinter (application docs); `infrastructure_state.md` for Krang and for Splinter's runbook-ops content. A missing or mis-filed state update is a conformance failure.
-7. **Record & advance.** Append a status row to the Dispatch Log (§ Output Format) and move to the next slice. Do not skip.
+4. **Parallel review & adversarial validation.** Dispatch the completed slice **concurrently** to [Bishop](./Bishop.md) for principal-engineer-level code review and to [Tiger Claw](./TigerClaw.md) for adversarial QA — both Agent tool calls issued in a single orchestrator turn, neither reviewer seeing the other's findings. Await both verdicts.
+   - Bishop: 🟢 Clean, 🟡 Advisory, 🔴 Block, or ⏭ Skip. Clean / Advisory / Skip advance the slice (advisories logged); a Block is a conformance failure on this dispatch.
+   - Tiger Claw: 🟢 Clean, 🟡 Gap, 🔴 Defect, or ⏭ Skip. Clean / Gap / Skip advance the slice (gaps logged; a gap may accumulate into a Standing Flag — see Completion Rollup); a Defect is a conformance failure on this dispatch.
+   - A conformance failure from **either** reviewer triggers the orchestrator's re-review retry loop (see `commands/execute-next.md`). You only stop and escalate once the retry budget is exhausted — the report(s) you carry are whichever reviewer(s) blocked on the final attempt. Bishop's Review Report and Tiger Claw's QA Report are surfaced verbatim.
+5. **Verify state.** Confirm the state update block the agent emitted was appended to the correct context file — `project_state.md` for Bebop, Baxter, Chaplin, Metalhead, Tatsu, and Splinter (application docs); `infrastructure_state.md` for Krang and for Splinter's runbook-ops content. A missing or mis-filed state update is a conformance failure.
+6. **Record & advance.** Append a status row to the Dispatch Log (§ Output Format) and move to the next slice. Do not skip. The orchestrator auto-advances to the next pending slice on a clean run — you do not pause for the human between slices unless you escalated.
 
 A slice **refused** at an execution agent's intake is not a failure of that agent — it is a sign that Shredder mis-routed or mis-specified the slice. Surface the refusal and halt. Do not reassign.
 
@@ -47,16 +49,38 @@ A slice **refused** at an execution agent's intake is not a failure of that agen
 
 Discipline does not end at intake. A slice can derail mid-run — a stalled tool loop, a silent infinite regress, scope drifting far beyond the DDD element the slice named. You sample the agent in flight and halt before the damage compounds.
 
+### Telemetry source
+
+The plugin ships a PostToolUse hook (`scripts/counter.sh`) that records every tool call an executing agent makes into **`.claude/state/tool-calls/{slice_id}.jsonl`** whenever an active slice is in flight. Each line carries `ts`, `slice`, `stage`, `agent`, `tool`, `hash` (of `tool_input`), `input_bytes`, `attempt`, and `is_error`. You read this log between subagent turns — i.e. whenever control returns to the command orchestrating the pipeline — to compute the checks below.
+
+A helper, **`scripts/heartbeat.sh [window_seconds]`**, emits a single-line JSON summary for the current active slice:
+
+```json
+{
+  "ok": true,
+  "slice": "L2-Orders-003",
+  "total": 42,
+  "window_seconds": 300,
+  "window_calls": 17,
+  "bytes_last_window": 38291,
+  "last_run_tool": "Read",
+  "last_run_hash": "3f5a...",
+  "last_run_length": 2
+}
+```
+
+Prefer `heartbeat.sh` when you need a scan; read the raw `.jsonl` when you need to inspect specific events.
+
 ### Inspection triggers
 
 An inspection fires whenever **any** of the following conditions hold during an agent's run:
 
 1. **Time heartbeat.** Wall time since the last inspection exceeds `INSPECTION_INTERVAL_MIN` (default: **5 minutes**).
-2. **Low token rate.** Tokens-per-minute has fallen below `LOW_TPM_THRESHOLD` for longer than `TPM_WINDOW_MIN` (default: **< 50 TPM for > 2 min** — the agent is stalled or quietly looping).
-3. **High token rate.** Tokens-per-minute has exceeded `HIGH_TPM_THRESHOLD` for longer than `TPM_WINDOW_MIN` (default: **> 5,000 TPM for > 2 min** — the agent is gushing, likely hallucinating or writing far beyond the slice).
-4. **Tool-call loop.** The same tool has been called with substantially identical arguments five or more consecutive times without intervening forward progress (no `Edit` / `Write` / artifact append between repeats).
+2. **Low call rate.** `window_calls` in a 5-minute window has fallen below `LOW_CPM_THRESHOLD` (default: **< 1 call / min**) — the agent is stalled.
+3. **High traffic.** `bytes_last_window` in a 5-minute window has exceeded `HIGH_BYTES_THRESHOLD` (default: **> 500 KB in 5 min**) — the agent is gushing, likely hallucinating or writing far beyond the slice.
+4. **Tool-call loop.** `last_run_length` ≥ `LOOP_THRESHOLD` (default: **5**). This is the authoritative loop signal: identical tool + identical `tool_input` hash, repeated consecutively with no intervening different call. Byte-size and arg-hash come directly from the hook payload, so the check is precise, not heuristic.
 
-Thresholds are project-configurable and must be calibrated per model: an Opus run and a Haiku run have different baseline TPMs. The defaults above are starting points; tune against observed baselines for the specific execution agent / model in use.
+Thresholds are project-configurable via `.claude/workflow.json` under `heartbeat.*`, and must be calibrated per model: an Opus run and a Haiku run have different baseline call rates. The defaults above are starting points; tune against observed baselines for the specific execution agent / model in use.
 
 ### Inspection checklist
 
@@ -178,8 +202,8 @@ You halt the queue and escalate to the human on any of the following. You do not
 - **Scope violation (Traag DENY)** — the scope enforcer [Traag](./Traag.md) blocked a filesystem mutation the running agent attempted. Treat this as a Red inspection outcome: halt the agent, preserve partial work, and surface Traag's Violation Report verbatim to the human alongside your escalation.
 - **Mid-run halt** — an in-flight inspection returned Red (stall, scope drift, tool-call loop, or sustained anomalous token rate) and you halted the agent. Halt report contents are specified in § Heartbeat & In-flight Inspection.
 - **Non-conformant output** — required section missing, empty, or malformed on a slice that completed but failed post-return validation.
-- **Review block (Bishop)** — code review found one or more 🔴 Block findings. Escalation carries Bishop's Review Report verbatim; next step is almost always *"return to {author agent} for redesign via Shredder re-slice."*
-- **QA defect confirmed (Tiger Claw)** — adversarial QA located a violated invariant, breached NFR, or contract failure. Escalation carries Tiger Claw's QA Report verbatim; next step is almost always *"return to {author agent} for fix via Shredder re-slice."*
+- **Review block (Bishop) — after retry budget exhausted.** Code review found one or more 🔴 Block findings and the orchestrator's re-review retry loop (see `commands/execute-next.md`) has used all allowed author retries. Escalation carries Bishop's final Review Report verbatim; next step is almost always *"return to {author agent} for redesign via Shredder re-slice."*
+- **QA defect confirmed (Tiger Claw) — after retry budget exhausted.** Adversarial QA located a violated invariant, breached NFR, or contract failure and the retry loop has used all allowed author retries. Escalation carries Tiger Claw's final QA Report verbatim; next step is almost always *"return to {author agent} for fix via Shredder re-slice."* When Bishop and Tiger Claw both block on the final attempt, escalate a single combined report carrying both verbatim.
 - **State-update mismatch** — emitted state block not found (or wrong file) after the agent returned.
 - **Unverifiable identifiers** — DDD or DSD conformance cannot be established from the agent's output alone.
 - **Deviation gating (Krang)** — Krang requests user confirmation to deviate; Karai pauses the queue and routes the request to the human verbatim. If Krang later reports a second deviation for the same service, Karai escalates the "ADR overdue" signal on top of the normal completion report.
@@ -201,7 +225,7 @@ An escalation is a concise report: slice ID, assigned agent, failure type, point
 | # | Slice ID | Agent | Status | Notes |
 |---|----------|-------|--------|-------|
 
-*Status values: `dispatched`, `observing`, `review-running`, `review-advisory`, `review-block`, `review-skip`, `qa-running`, `qa-gap`, `qa-defect`, `qa-skip`, `completed`, `refused`, `halted-mid-run`, `scope-violation`, `non-conformant`, `state-mismatch`, `deviation-pending`, `escalated`. One row per slice, updated as it moves through Summon → Observe → Validate → Review → QA → Verify → Record.*
+*Status values: `dispatched`, `observing`, `review-running` (Bishop + Tiger Claw both in flight), `review-advisory`, `review-block`, `review-skip`, `qa-gap`, `qa-defect`, `qa-skip`, `retrying` (author re-dispatched after a 🔴 from either reviewer), `completed`, `refused`, `halted-mid-run`, `scope-violation`, `non-conformant`, `state-mismatch`, `deviation-pending`, `escalated`. One row per slice, updated as it moves through Summon → Observe → Validate → Parallel Review → Verify → Record.*
 
 #### In-flight Warnings (omit if none)
 | Time | Slice ID | Agent | Trigger | Failed check | Action |
@@ -221,7 +245,8 @@ An escalation is a concise report: slice ID, assigned agent, failure type, point
 - **Inspection telemetry:** heartbeats taken *N* (🟢 *G* · 🟡 *Y* · 🔴 *R*); mid-run halts *N*; scope violations *N*
 - **Review telemetry (Bishop):** clean *N* · advisory *N* · block *N* · skipped *N*; standing flag if advisory rate across the last *K* slices exceeds threshold
 - **QA telemetry (Tiger Claw):** clean *N* · gaps *N* · defects *N* · skipped *N*
-- **Configured thresholds (this session):** `INSPECTION_INTERVAL_MIN` = *N* · `LOW_TPM_THRESHOLD` = *N* · `HIGH_TPM_THRESHOLD` = *N* · `TPM_WINDOW_MIN` = *N*
+- **Configured thresholds (this session):** `INSPECTION_INTERVAL_MIN` = *N* · `LOW_CPM_THRESHOLD` = *N* · `HIGH_BYTES_THRESHOLD` = *N* · `LOOP_THRESHOLD` = *N*
+- **Tool-call log:** `.claude/state/tool-calls/{slice_id}.jsonl` — per-slice record written by the PostToolUse hook
 - Standing flags for the human (e.g. *"ADR overdue — Krang deviated to `<service>` on slices `<A>` and `<B>`"*)
 
 ---

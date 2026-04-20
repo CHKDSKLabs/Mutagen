@@ -120,7 +120,7 @@ if match_glob "$REL_PATH" "${BUNDLE_GLOBS[@]}"; then
         echo "  path: $REL_PATH"
         echo "  reason: design scaffolds and the instantiated upstream bundle"
         echo "          (PRD / ADR / DDD / ISC / DSD, templates/, guides/)"
-        echo "          are owned by April. Run /shredder:elicit or set"
+        echo "          are owned by April. Run /mutagen:elicit or set"
         echo "          CLAUDE_WORKFLOW_META=1 for plugin-internal edits."
       } >&2
       exit 2

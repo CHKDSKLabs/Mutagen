@@ -146,7 +146,8 @@ Hand Karai your QA Report (see Output Format). She carries the verdict into her 
 - Category (invariant / NFR / boundary / seam / concurrency)
 - Citation hit (`[ISC-NNN]` / `[NFR-*]` / `[INV-*]`)
 - Minimal reproducer (inputs, expected, actual)
-- Suggested next step — for Defect, almost always *"return to {author agent} for fix via Shredder re-slice"*; for Gap, *"merge QA tests; no production change required."*
+- **Suggested Fix — Defect only.** *2–4 lines. Concrete, bounded direction the author can act on in the re-review retry loop: name the file(s) / function(s) / approach that closes the cited invariant or NFR breach without widening scope. This is not a diff — you do not patch production code — but it must be specific enough that the author on a retry can start implementing without re-deriving the root cause from your reproducer. If the defect can only be resolved by a re-slice (invariant was miscited, NFR was unrealistic for the architecture), say so explicitly.*
+- Suggested next step — for Defect, *"re-dispatch {author agent} with the Suggested Fix via the re-review loop; on retry exhaustion, return to Shredder for re-slice"*; for Gap, *"merge QA tests; no production change required."*
 
 #### Coverage Concerns (optional)
 *Invariants the slice appears to touch but did not cite. Name the invariant candidate, the evidence, and suggest the slice or ISC that should cite it. Does not block.*

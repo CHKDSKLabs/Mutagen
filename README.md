@@ -1,6 +1,6 @@
-# agentic_design_workflow — shredder marketplace
+# agentic_design_workflow — mutagen marketplace
 
-A Claude Code plugin marketplace. Ships one plugin today — **`shredder`** — with room for companions alongside it.
+A Claude Code plugin marketplace. Ships one plugin today — **`mutagen`** — with room for companions alongside it.
 
 ## Install
 
@@ -8,7 +8,7 @@ Inside a Claude Code session:
 
 ```
 /plugin marketplace add ObtuseAglet/agentic_design_workflow
-/plugin install shredder@shredder-marketplace
+/plugin install mutagen@mutagen-marketplace
 ```
 
 Verify:
@@ -22,9 +22,9 @@ Verify:
 
 | Plugin | Description | Path |
 |--------|-------------|------|
-| [`shredder`](plugins/shredder/) | End-to-end agentic design workflow — thirteen subagents, four slash commands (`/shredder:elicit`, `/shredder:slice`, `/shredder:execute-next`, `/shredder:status`), a `PreToolUse` scope-enforcement hook, five-document upstream design bundle (PRD / ADR / DDD / ISC / DSD) with templates and authoring guides. | [`plugins/shredder/`](plugins/shredder/) |
+| [`mutagen`](plugins/mutagen/) | End-to-end agentic design workflow — thirteen subagents, six slash commands (`/mutagen:elicit`, `/mutagen:slice`, `/mutagen:execute-next`, `/mutagen:amend-scope`, `/mutagen:status`, `/mutagen:setup-pushover`), a `PreToolUse` scope-enforcement hook, optional Pushover halt notifications, five-document upstream design bundle (PRD / ADR / DDD / ISC / DSD) with templates and authoring guides. | [`plugins/mutagen/`](plugins/mutagen/) |
 
-Each plugin has its own README with install flow, session ritual, agent roster, and configuration. See [`plugins/shredder/README.md`](plugins/shredder/README.md) for the full story.
+Each plugin has its own README with install flow, session ritual, agent roster, and configuration. See [`plugins/mutagen/README.md`](plugins/mutagen/README.md) for the full story.
 
 ## Repository layout
 
@@ -33,13 +33,13 @@ Each plugin has its own README with install flow, session ritual, agent roster, 
 ├── .claude-plugin/
 │   └── marketplace.json            # marketplace manifest
 ├── plugins/
-│   └── shredder/                   # the shredder plugin
+│   └── mutagen/                    # the mutagen plugin
 │       ├── .claude-plugin/
 │       │   └── plugin.json
 │       ├── agents/                 # 13 subagents
-│       ├── commands/               # 4 slash commands
-│       ├── hooks/                  # PreToolUse hook wiring
-│       ├── scripts/                # guard.sh (scope enforcer)
+│       ├── commands/               # 6 slash commands
+│       ├── hooks/                  # PreToolUse + PostToolUse hook wiring
+│       ├── scripts/                # guard.sh, counter.sh, heartbeat.sh, render_queue.sh, notify.sh
 │       ├── templates/              # PRD / ADR / DDD / ISC / DSD templates
 │       ├── guides/                 # authoring & review guides
 │       └── README.md
@@ -54,8 +54,8 @@ New plugins live under `plugins/<name>/` with their own `.claude-plugin/plugin.j
 {
   "plugins": [
     {
-      "name": "shredder",
-      "source": "./plugins/shredder",
+      "name": "mutagen",
+      "source": "./plugins/mutagen",
       "version": "0.1.0"
     },
     {

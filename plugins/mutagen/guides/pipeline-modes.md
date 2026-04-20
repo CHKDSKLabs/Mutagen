@@ -44,7 +44,7 @@ Projects opt in by creating `.claude/workflow.json`:
 }
 ```
 
-Omitted or absent = `"full"`. Downgrade or upgrade at any time; Shredder re-evaluates tags on the next `/shredder:slice`.
+Omitted or absent = `"full"`. Downgrade or upgrade at any time; Shredder re-evaluates tags on the next `/mutagen:slice`.
 
 ## Adopting lightweight — the opinionated first ADR
 
