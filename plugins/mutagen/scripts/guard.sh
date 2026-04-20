@@ -51,9 +51,13 @@ if [[ -z "$FILE_PATH" ]]; then
 fi
 
 CWD="$(printf '%s' "$PAYLOAD" | jq -r '.cwd // empty')"
-REL_PATH="$FILE_PATH"
-if [[ -n "$CWD" && "$FILE_PATH" == "$CWD"/* ]]; then
-  REL_PATH="${FILE_PATH#"$CWD"/}"
+# Windows hands us C:\foo\bar paths; globs below are forward-slash. Flatten
+# both before the prefix strip or every match silently fails and the slice
+# can't write to its own allowlist.
+REL_PATH="${FILE_PATH//\\//}"
+CWD_NORM="${CWD//\\//}"
+if [[ -n "$CWD_NORM" && "$REL_PATH" == "$CWD_NORM"/* ]]; then
+  REL_PATH="${REL_PATH#"$CWD_NORM"/}"
 fi
 
 match_glob() {
