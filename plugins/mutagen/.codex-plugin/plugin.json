@@ -1,6 +1,6 @@
 {
   "name": "mutagen",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "End-to-end agentic design workflow. Thirteen personas execute PRD/ADR/DDD/ISC/DSD design bundles through Shredder's dependency-ordered slicing and Karai's reviewed dispatch.",
   "author": {
     "name": "CHKDSK Labs",

@@ -13,7 +13,7 @@
       "name": "mutagen",
       "source": "./plugins/mutagen",
       "description": "End-to-end agentic design workflow: April interviews the user and authors the five upstream documents (PRD / ADR / DDD / ISC / DSD), Shredder slices the approved bundle, Karai dispatches executors through Bishop review and Tiger Claw adversarial QA, and a PreToolUse hook enforces per-slice filesystem scope.",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "author": {
         "name": "ObtuseAglet",
         "url": "https://github.com/ObtuseAglet"
