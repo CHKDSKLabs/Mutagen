@@ -12,6 +12,32 @@ re-review retry loop on Bishop 🔴 Block or Tiger Claw 🔴 Defect. On success
 this skill **auto-advances to the next ready slice** without a fresh prompt;
 it stops when the queue is empty or a stage forces escalation.
 
+## Autopilot discipline (read before every turn in the loop)
+
+This skill is a loop, not a conversation. Between slices you are **not**
+checking in with the human. Specifically:
+
+- **Never** emit "Proceed?", "Continue?", "Shall I auto-advance?",
+  "Pause here?", "Ready for the next slice?", "Let me know if you want
+  me to…", or any other permission-seeking phrase. Generating such a
+  phrase is a protocol violation, not polite conversation.
+- **Never** end your turn between a completed slice and the next
+  slice's Preflight tool calls. The same assistant turn that emits the
+  one-line completion marker for slice N must also issue the Preflight
+  tool calls for slice N+1. No trailing prose after the marker.
+- **Never** offer a narrative recap ("What landed:", "Human
+  provisioning pending:", "Next ready slice:", bulleted file lists,
+  cross-slice findings). That content already lives in
+  `slices/<slice_id>/summary.md` and the review reports — surface one
+  terse line and move on.
+- The **only** moments you end a turn are the stop conditions in
+  § Auto-advance stop conditions below: queue clear, queue stalled,
+  structural escalation, retry-budget escalation, scope violation,
+  user interrupt. Nothing else.
+
+If you catch yourself about to ask the human whether to continue,
+you're wrong. Continue.
+
 ## Codex scope-enforcement note
 
 The Claude Code plugin rotates `.mutagen/state/active-slice.json` between
@@ -346,10 +372,7 @@ Otherwise:
    its own context. Reference the summary file; re-read on demand.
 
 3. Clear `.mutagen/state/active-slice.json`.
-4. Report slice summary + telemetry (attempts, Bishop verdict, Tiger Claw
-   verdict, heartbeat anomalies) to the user as a short update. Long form
-   lives in `slices/<slice_id>/summary.md`.
-5. **Milestone check.** Inspect `slices/queue.json`: if no `pending` or
+4. **Milestone check.** Inspect `slices/queue.json`: if no `pending` or
    `blocked_retry` slice remains in the just-completed slice's `layer`,
    fire:
 
@@ -360,8 +383,24 @@ Otherwise:
    ```
 
    The notifier self-gates via `.claude/workflow.json` `notify.milestones`.
+5. **Emit the one-line completion marker AND immediately continue in the
+   same turn.** The full summary is on disk at
+   `slices/<slice_id>/summary.md`; do not restate its contents here. The
+   marker is exactly one line in this shape and nothing more:
+
+   `✔ <slice_id> — <bishop verdict>/<tiger_claw verdict>, attempts=<N>[, micro_correction][ — heartbeat: <anomaly>]`
+
+   Do **not** append "Next slice:", "Proceeding to…", "Ready to
+   continue?", file-touched lists, cross-slice findings, or any other
+   prose. The marker is a log line, not a conversation turn. In the
+   **same assistant turn** that emits this marker, issue the Preflight
+   tool calls for the next slice. Ending your turn after the marker
+   without having dispatched the next Preflight is the violation we're
+   trying to avoid.
 6. **Auto-advance** if the queue has a `pending` or `blocked_retry` slice.
-   Jump back to Preflight. Do not wait for a fresh prompt.
+   Jump back to Preflight — in the same turn as step 5's marker. No fresh
+   prompt, no permission question, no "let me know if you'd like to
+   continue." Keep looping until a stop condition fires.
 
 **Orchestrator context-offload rule.** For any closed slice, reference
 `slices/<slice_id>/summary.md` rather than carrying the agent's transcripts,

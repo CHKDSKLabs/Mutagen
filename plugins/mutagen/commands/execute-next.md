@@ -6,6 +6,17 @@ description: Run Karai on the next pending slice — dispatches the assigned exe
 
 The user has invoked `/mutagen:execute-next`. You orchestrate the full execution pipeline across slices: for each slice in the queue you run **author → Karai (structural) → Bishop ∥ Tiger Claw (parallel review) → Karai (state record)**, with a re-review retry loop on Bishop 🔴 Block or Tiger Claw 🔴 Defect, and per-stage scope manifest rotation so each stage only has the write paths it actually needs. On success the command **auto-advances to the next pending slice** without waiting for a fresh prompt; it only stops when the queue is empty or a stage forces an escalation.
 
+## Autopilot discipline (read before every turn in the loop)
+
+This command is a loop, not a conversation. Between slices you are **not** checking in with the human. Specifically:
+
+- **Never** emit "Proceed?", "Continue?", "Shall I auto-advance?", "Pause here?", "Ready for the next slice?", "Let me know if you want me to…", or any other permission-seeking phrase. Generating such a phrase is a protocol violation, not polite conversation.
+- **Never** end your turn between a completed slice and the next slice's Preflight tool calls. The same assistant turn that emits the one-line completion summary for slice N must also issue the Preflight tool calls for slice N+1. No trailing prose after the summary.
+- **Never** offer a narrative recap ("What landed:", "Human provisioning pending:", "Next ready slice:", bulleted file lists, cross-slice findings). That content already lives in `slices/<slice_id>/summary.md` and the review reports — surface one terse line and move on.
+- The **only** moments you end a turn are the stop conditions in § Auto-advance stop conditions below: queue clear, queue stalled, structural escalation, retry-budget escalation, Traag DENY, user interrupt. Nothing else.
+
+If you catch yourself about to ask the human whether to continue, you're wrong. Continue.
+
 ## Session preflight (runs once per `/mutagen:execute-next` invocation)
 
 Read the upstream design bundle into your conversation context **once**, before entering the per-slice loop. This is the cache that lets every subsequent spawn ride on inlined evidence instead of forcing every author / reviewer to cold-load 5–14 docs themselves.
@@ -248,9 +259,13 @@ Otherwise:
    ```
 
 3. Clear `.mutagen/state/active-slice.json`.
-4. Report the slice summary + telemetry (attempts, Bishop verdict, Tiger Claw verdict, any heartbeat anomalies from `scripts/heartbeat.sh`) to the user as a short update — enough that progress is visible, terse enough that it doesn't bury the next slice's report. The long form lives in `slices/<slice_id>/summary.md`.
-5. **Milestone check.** After recording completion, inspect `slices/queue.json`: if no `pending` or `blocked_retry` slice remains in the just-completed slice's `layer`, fire `bash ${CLAUDE_PLUGIN_ROOT}/scripts/notify.sh layer_complete "mutagen — layer <N> complete" "<M> slices completed in layer <N>. Next pending slice: <id or 'queue clear'>"`. The notifier self-gates via `.claude/workflow.json` `notify.milestones` — no need to check here.
-6. **Auto-advance.** If the queue still has a `pending` or `blocked_retry` slice, jump straight back to **Preflight** and run the next one. Do not wait for a fresh prompt, do not ask for permission. Keep looping until one of the stop conditions below fires.
+4. **Milestone check.** After recording completion, inspect `slices/queue.json`: if no `pending` or `blocked_retry` slice remains in the just-completed slice's `layer`, fire `bash ${CLAUDE_PLUGIN_ROOT}/scripts/notify.sh layer_complete "mutagen — layer <N> complete" "<M> slices completed in layer <N>. Next pending slice: <id or 'queue clear'>"`. The notifier self-gates via `.claude/workflow.json` `notify.milestones` — no need to check here.
+5. **Emit the one-line completion marker AND immediately continue in the same turn.** The full summary is on disk at `slices/<slice_id>/summary.md`; do not restate its contents here. The marker is exactly one line in this shape and nothing more:
+
+   `✔ <slice_id> — <bishop verdict>/<tiger_claw verdict>, attempts=<N>[, micro_correction][ — heartbeat: <anomaly>]`
+
+   Do **not** append "Next slice:", "Proceeding to…", "Ready to continue?", file-touched lists, cross-slice findings, or any other prose. The marker is a log line, not a conversation turn. In the **same assistant turn** that emits this marker, issue the Preflight tool calls for the next slice (the first Read/Bash calls of Preflight steps 1–2). Ending your turn after the marker without having dispatched the next Preflight is the violation we're trying to avoid.
+6. **Auto-advance.** Jump straight back to **Preflight** for the next ready slice — in the same turn as step 5's marker. No fresh prompt, no permission question, no "let me know if you'd like to continue." Keep looping until one of the stop conditions below fires. The only thing that ends a turn mid-queue is a stop condition.
 
 **Orchestrator context-offload rule.** For any closed slice, reference `slices/<slice_id>/summary.md` rather than carrying the agent's transcripts, Evidence Bundle, or report bodies forward. The summary plus the paths it points to is the full record; re-read on demand. This keeps orchestrator context bounded as the queue progresses.
 
