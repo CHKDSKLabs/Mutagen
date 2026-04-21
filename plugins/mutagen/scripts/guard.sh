@@ -12,7 +12,7 @@
 #      (templates/, guides/, upstream design docs under docs/ or
 #      repo-root PRD/ADR/DDD/ISC/DSD variants) unless an active
 #      slice explicitly allows that path. The lone exception is
-#      April: when `.claude/state/active-slice.json` is present
+#      April: when `.mutagen/state/active-slice.json` is present
 #      with `"author_agent": "April"`, the bundle may be edited.
 #   3. If an active-slice state file is present, enforce its
 #      `allowed_write_globs`. A write outside that list is blocked.
@@ -73,7 +73,7 @@ match_glob() {
   return 1
 }
 
-STATE_FILE="${CWD:-.}/.claude/state/active-slice.json"
+STATE_FILE="${CWD:-.}/.mutagen/state/active-slice.json"
 
 ACTIVE_AGENT=""
 declare -a ALLOWED=()
@@ -146,7 +146,7 @@ if [[ ${#ALLOWED[@]} -gt 0 ]]; then
       echo "  agent: ${ACTIVE_AGENT:-<unknown>}"
       echo "  allowed globs:"
       printf '    - %s\n' "${ALLOWED[@]}"
-      echo "  Edit .claude/state/active-slice.json to extend the allowlist,"
+      echo "  Edit .mutagen/state/active-slice.json to extend the allowlist,"
       echo "  or halt the slice and escalate to the user."
     } >&2
     exit 2

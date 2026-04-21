@@ -8,7 +8,7 @@ The user has invoked `/mutagen:slice`. You are orchestrating the Shredder subage
 
 ## Preflight
 
-1. Confirm the state directory: `mkdir -p .claude/state slices`.
+1. Confirm the state directory: `mkdir -p .mutagen/state slices`.
 2. **Readiness check.** Verify every upstream document exists and carries a status line indicating `Approved` (PRD / DDD / DSD) or `Accepted` (ADR / ISC). If any are missing or still `Draft`, **halt** and report to the user:
    - Which documents are missing.
    - Which are present but not Approved / Accepted.
@@ -26,7 +26,7 @@ The user has invoked `/mutagen:slice`. You are orchestrating the Shredder subage
      "stage": "authoring_queue",
      "allowed_write_globs": [
        "slices/**",
-       ".claude/state/**"
+       ".mutagen/state/**"
      ]
    }
    ```
@@ -47,8 +47,8 @@ Spawn the Shredder subagent via the Agent tool with:
 ## After Shredder returns
 
 1. **Persist the validation report.** Extract Shredder's Validation Report (the conflict-check section or Readiness Report he produced). Write it to two files:
-   - `.claude/state/validation-report.md` — the full markdown verbatim.
-   - `.claude/state/validation-report.json` — structured summary:
+   - `.mutagen/state/validation-report.md` — the full markdown verbatim.
+   - `.mutagen/state/validation-report.json` — structured summary:
      ```json
      {
        "date": "YYYY-MM-DD",
@@ -64,13 +64,13 @@ Spawn the Shredder subagent via the Agent tool with:
      `bundle_ready` is `false` when Shredder returned a Readiness Report (halted on missing / draft docs) or surfaced a blocking cross-doc conflict. `readiness_issues` enumerates missing / draft documents; `validation_findings` enumerates cross-doc conflicts Shredder raised for the human (these may be informational and non-blocking).
 2. Surface the full Slice Queue to the user for review. If Shredder did not write both `slices/queue.json` and `slices/queue.md`, stop and flag it — the JSON is required for Karai.
 3. Surface any deviations, conflicts, or escalation items Shredder flagged.
-4. Clear the active-slice state file: `rm -f .claude/state/active-slice.json`. The queue is authored; no slice is yet in flight.
+4. Clear the active-slice state file: `rm -f .mutagen/state/active-slice.json`. The queue is authored; no slice is yet in flight.
 5. Tell the user the next step is `/mutagen:execute-next` to begin dispatching slices through Karai.
 
 ## Reminders
 
 - Shredder does not execute slices. He **authors the plan**. Karai executes.
-- If Shredder's Readiness Check fails on any document, stop and escalate — do not author a partial queue. Still persist the resulting Readiness Report to `.claude/state/validation-report.{md,json}` so `/mutagen:status` can see why slicing halted.
+- If Shredder's Readiness Check fails on any document, stop and escalate — do not author a partial queue. Still persist the resulting Readiness Report to `.mutagen/state/validation-report.{md,json}` so `/mutagen:status` can see why slicing halted.
 - Numbered IDs in slice citations MUST match upstream exactly; any renumbering in upstream docs post-slice is a bug.
 - `slices/queue.json` is the canonical queue. `slices/queue.md` is a human rendering. Regenerate both whenever the queue changes.
 

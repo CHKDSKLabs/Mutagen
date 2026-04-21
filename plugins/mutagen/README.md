@@ -105,10 +105,10 @@ Namespaced under `mutagen:`:
 
 | Command | Purpose |
 |---------|---------|
-| `/mutagen:elicit` | Run April to interview you and author / iterate the five upstream documents. Persists her Readiness Brief to `.claude/state/readiness-brief.{md,json}`. |
-| `/mutagen:slice` | Run Shredder on the approved bundle to produce a dependency-ordered slice queue. Emits `slices/queue.json` (canonical) and `slices/queue.md` (rendered), and persists his Validation Report to `.claude/state/validation-report.{md,json}`. |
+| `/mutagen:elicit` | Run April to interview you and author / iterate the five upstream documents. Persists her Readiness Brief to `.mutagen/state/readiness-brief.{md,json}`. |
+| `/mutagen:slice` | Run Shredder on the approved bundle to produce a dependency-ordered slice queue. Emits `slices/queue.json` (canonical) and `slices/queue.md` (rendered), and persists his Validation Report to `.mutagen/state/validation-report.{md,json}`. |
 | `/mutagen:execute-next` | Run Karai on the next pending slice — dispatches the assigned executor with per-stage manifest rotation, runs **Bishop and Tiger Claw in parallel** as a single review stage, retries the author on 🔴 Block / 🔴 Defect up to `review.max_retries`, records state, and **auto-advances to the next pending slice** until the queue is empty or a stage escalates. |
-| `/mutagen:amend-scope` | Invoke Traag to evaluate a mid-slice amendment request against the current stage's manifest, the active agent's domain, and the global denylist. ALLOW rewrites `.claude/state/active-slice.json`; DENY returns a Violation Report. |
+| `/mutagen:amend-scope` | Invoke Traag to evaluate a mid-slice amendment request against the current stage's manifest, the active agent's domain, and the global denylist. ALLOW rewrites `.mutagen/state/active-slice.json`; DENY returns a Violation Report. |
 | `/mutagen:status` | Read-only report on upstream-document status, April's Readiness Brief, Shredder's Validation Report, queue progress, active slice, heartbeat telemetry, gate verdicts, and open escalations. |
 | `/mutagen:setup-pushover` | First-run wizard for Pushover notifications — detects existing config, collects user key + app token, lets you pick env-var or `workflow.json` storage, optionally configures `quiet_events`, and sends a test push. |
 
@@ -120,9 +120,9 @@ Typical rhythm on a new project:
 
 ## Scope enforcement
 
-A `PreToolUse` hook on `Write` / `Edit` reads `.claude/state/active-slice.json` (written by `/mutagen:elicit`, `/mutagen:slice`, and `/mutagen:execute-next` before dispatch) and blocks writes outside the slice's declared allowlist. A universal denylist also protects the design scaffolds (`templates/**`, `guides/**`) and instantiated upstream bundle (`docs/PRD*`, `docs/ADR*`, `docs/DDD*`, `docs/ISC*`, `docs/DSD*` and repo-root variants) from edits by anyone other than April (or an explicit `CLAUDE_WORKFLOW_META=1` override for plugin-internal work).
+A `PreToolUse` hook on `Write` / `Edit` reads `.mutagen/state/active-slice.json` (written by `/mutagen:elicit`, `/mutagen:slice`, and `/mutagen:execute-next` before dispatch) and blocks writes outside the slice's declared allowlist. A universal denylist also protects the design scaffolds (`templates/**`, `guides/**`) and instantiated upstream bundle (`docs/PRD*`, `docs/ADR*`, `docs/DDD*`, `docs/ISC*`, `docs/DSD*` and repo-root variants) from edits by anyone other than April (or an explicit `CLAUDE_WORKFLOW_META=1` override for plugin-internal work).
 
-Blocks return exit code 2 with a stderr message that surfaces to Claude as the reason. Extending scope is a deliberate edit to `.claude/state/active-slice.json` — there is no "just this once" bypass.
+Blocks return exit code 2 with a stderr message that surfaces to Claude as the reason. Extending scope is a deliberate edit to `.mutagen/state/active-slice.json` — there is no "just this once" bypass.
 
 ## Pushover notifications (optional)
 
@@ -179,7 +179,7 @@ Karai's structural conformance, Traag's scope enforcement, and every executor's 
 
 ## Per-stage scope manifest rotation
 
-Plugin subagents can't declare their own `PreToolUse` hooks per the official Claude Code spec, and the hook doesn't receive the current subagent name. Instead of resigning to a union allowlist, `/mutagen:execute-next` **rewrites `.claude/state/active-slice.json` between stages** so each subagent only sees the write paths it actually needs: author paths during stage 1, `reviews/**` during Bishop, `tests/qa/**` during Tiger Claw, and the state files during Karai's verification stage. The guard hook reads the current manifest literally, so rotation gives effective per-subagent enforcement without per-subagent hooks.
+Plugin subagents can't declare their own `PreToolUse` hooks per the official Claude Code spec, and the hook doesn't receive the current subagent name. Instead of resigning to a union allowlist, `/mutagen:execute-next` **rewrites `.mutagen/state/active-slice.json` between stages** so each subagent only sees the write paths it actually needs: author paths during stage 1, `reviews/**` during Bishop, `tests/qa/**` during Tiger Claw, and the state files during Karai's verification stage. The guard hook reads the current manifest literally, so rotation gives effective per-subagent enforcement without per-subagent hooks.
 
 See [`commands/execute-next.md`](commands/execute-next.md) for the stage-by-stage manifest table.
 

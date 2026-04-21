@@ -9,7 +9,7 @@ The user has invoked `/mutagen:setup-pushover`. Your job is to get Pushover noti
 ## Hard rules on secrets
 
 - **Never echo the user key or app token back to the user.** After they provide a value, acknowledge with a masked summary (`user_key: uQi...7xZ` showing first three + last three). They already know the value — re-printing it in chat accomplishes nothing and leaves it in more scrollback.
-- **Never save keys to memory, state files, commits, or any file outside the storage path the user chooses.** Don't write them to `.claude/state/**`, don't include them in a task description, don't paste them into the Pushover section of `workflow.json` *and* also tell the user to commit the file. The only places keys land are (a) the user's shell env / rc file, or (b) `.claude/workflow.json` with an explicit don't-commit warning.
+- **Never save keys to memory, state files, commits, or any file outside the storage path the user chooses.** Don't write them to `.mutagen/state/**`, don't include them in a task description, don't paste them into the Pushover section of `workflow.json` *and* also tell the user to commit the file. The only places keys land are (a) the user's shell env / rc file, or (b) `.claude/workflow.json` with an explicit don't-commit warning.
 - **If the user cancels at any step**, do not persist partial values. Leave the environment as you found it.
 
 ---

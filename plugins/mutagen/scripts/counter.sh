@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PostToolUse tool-call counter.
 #
-# Records every tool call into .claude/state/tool-calls/{slice_id}.jsonl
+# Records every tool call into .mutagen/state/tool-calls/{slice_id}.jsonl
 # whenever an active slice is in flight. Karai reads this log for
 # loop detection, tokens-per-minute approximation, and heartbeat telemetry.
 #
@@ -16,7 +16,7 @@ PAYLOAD="$(cat || true)"
 command -v jq >/dev/null 2>&1 || exit 0
 
 CWD="$(printf '%s' "$PAYLOAD" | jq -r '.cwd // empty' 2>/dev/null || true)"
-STATE_FILE="${CWD:-.}/.claude/state/active-slice.json"
+STATE_FILE="${CWD:-.}/.mutagen/state/active-slice.json"
 [[ -f "$STATE_FILE" ]] || exit 0
 
 SLICE_ID="$(jq -r '.slice_id // empty' "$STATE_FILE" 2>/dev/null || true)"
@@ -52,7 +52,7 @@ IS_ERROR="$(printf '%s' "$PAYLOAD" | jq -r '(.tool_response.is_error // false) |
 
 TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-LOG_DIR="${CWD:-.}/.claude/state/tool-calls"
+LOG_DIR="${CWD:-.}/.mutagen/state/tool-calls"
 mkdir -p "$LOG_DIR" 2>/dev/null || exit 0
 LOG_FILE="$LOG_DIR/${SAFE_SLICE_ID}.jsonl"
 

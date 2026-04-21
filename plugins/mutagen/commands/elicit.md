@@ -8,7 +8,7 @@ The user has invoked `/mutagen:elicit`. You are orchestrating the April subagent
 
 ## Preflight
 
-1. Ensure the project's state directory exists: `mkdir -p .claude/state`.
+1. Ensure the project's state directory exists: `mkdir -p .mutagen/state`.
 2. Detect whether any upstream documents already exist. Check these paths and report what is present:
    - `docs/PRD.md` or `PRD.md`
    - `docs/ADR/**` or `docs/ADR-*.md` or repo-root `ADR-*.md`
@@ -46,12 +46,12 @@ The user has invoked `/mutagen:elicit`. You are orchestrating the April subagent
        "ISC*.md",
        "DSD*.md",
        "design/**",
-       ".claude/state/**"
+       ".mutagen/state/**"
      ]
    }
    ```
 
-   Write it to `.claude/state/active-slice.json`. The guard.sh hook reads this file on every Write / Edit.
+   Write it to `.mutagen/state/active-slice.json`. The guard.sh hook reads this file on every Write / Edit.
 
 ## Dispatch
 
@@ -64,8 +64,8 @@ Spawn the April subagent via the Agent tool with:
 
 1. Surface April's Readiness Brief (or interview turn) to the user verbatim.
 2. **Persist the Readiness Brief** whenever April produced one. Extract it and write two files:
-   - `.claude/state/readiness-brief.md` — the full markdown verbatim (the `📋 April — Readiness Brief {YYYY-MM-DD}` section).
-   - `.claude/state/readiness-brief.json` — structured summary:
+   - `.mutagen/state/readiness-brief.md` — the full markdown verbatim (the `📋 April — Readiness Brief {YYYY-MM-DD}` section).
+   - `.mutagen/state/readiness-brief.json` — structured summary:
      ```json
      {
        "date": "YYYY-MM-DD",
@@ -93,7 +93,7 @@ Spawn the April subagent via the Agent tool with:
      ```
    If April produced only an interview turn (no Readiness Brief), leave the state files as they are — do not overwrite with a half-populated brief.
 3. **Do not advance** to Shredder without explicit user instruction. April hands to the user; the user hands to Shredder.
-4. Leave `.claude/state/active-slice.json` in place — a follow-up April turn in the same session reuses it. When the user says the bundle is ready to slice, `/mutagen:slice` will overwrite the state file with Shredder's scope.
+4. Leave `.mutagen/state/active-slice.json` in place — a follow-up April turn in the same session reuses it. When the user says the bundle is ready to slice, `/mutagen:slice` will overwrite the state file with Shredder's scope.
 
 ## Reminders
 
@@ -102,6 +102,6 @@ Spawn the April subagent via the Agent tool with:
 - Cross-check every turn: does what the user just said contradict an earlier statement or a drafted document? If so, surface the mismatch.
 - Templates live at `${CLAUDE_PLUGIN_ROOT}/templates/`; never mutate them.
 - April reads the repo; she writes only the instantiated design docs.
-- The Readiness Brief lives in `.claude/state/readiness-brief.{md,json}` once persisted — `/mutagen:status` reads it to report bundle readiness without re-running April.
+- The Readiness Brief lives in `.mutagen/state/readiness-brief.{md,json}` once persisted — `/mutagen:status` reads it to report bundle readiness without re-running April.
 
 $ARGUMENTS

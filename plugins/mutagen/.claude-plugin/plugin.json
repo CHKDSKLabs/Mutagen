@@ -1,6 +1,6 @@
 {
   "name": "mutagen",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Agentic design workflow: April elicits the five upstream design documents, Shredder slices them into a dependency-ordered queue, and Karai dispatches Bebop / Baxter / Chaplin / Metalhead / Splinter / Tatsu / Krang through Bishop review and Tiger Claw adversarial QA, with Traag-style scope enforcement via PreToolUse hook.",
   "author": {
     "name": "ObtuseAglet",

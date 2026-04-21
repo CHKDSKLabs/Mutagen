@@ -6,9 +6,22 @@ description: Run Karai on the next pending slice — dispatches the assigned exe
 
 The user has invoked `/mutagen:execute-next`. You orchestrate the full execution pipeline across slices: for each slice in the queue you run **author → Karai (structural) → Bishop ∥ Tiger Claw (parallel review) → Karai (state record)**, with a re-review retry loop on Bishop 🔴 Block or Tiger Claw 🔴 Defect, and per-stage scope manifest rotation so each stage only has the write paths it actually needs. On success the command **auto-advances to the next pending slice** without waiting for a fresh prompt; it only stops when the queue is empty or a stage forces an escalation.
 
+## Session preflight (runs once per `/mutagen:execute-next` invocation)
+
+Read the upstream design bundle into your conversation context **once**, before entering the per-slice loop. This is the cache that lets every subsequent spawn ride on inlined evidence instead of forcing every author / reviewer to cold-load 5–14 docs themselves.
+
+1. Resolve and read each document. Each may live at `docs/<NAME>/<NAME>.md`, `docs/<NAME>.md`, or `<NAME>.md` at repo root — pick the first that exists:
+   - PRD
+   - All ADR files (`docs/ADR/ADR-*.md` or repo-root `ADR-*.md` — read all of them)
+   - DDD
+   - ISC
+   - DSD
+2. If any of PRD / DDD / ISC / DSD is missing — refuse and tell the user the bundle is incomplete; `/mutagen:slice` should not have generated a queue against it. ADRs may legitimately be empty if the project has not made any architectural decisions yet.
+3. Hold these documents in context for the duration of the run. The per-slice Evidence Bundle (preflight step 5 below) is built by extracting from this cache, not by re-reading from disk.
+
 ## Preflight (runs once per slice — re-enter at the top of the loop)
 
-1. `mkdir -p .claude/state reviews slices`.
+1. `mkdir -p .mutagen/state reviews slices`.
 2. Read `slices/queue.json` (canonical — see [`guides/queue-schema.md`](../guides/queue-schema.md)). If the JSON is missing but `slices/queue.md` exists, refuse and tell the user to re-run `/mutagen:slice` — Karai drives from the JSON. Find the first slice whose status is `pending` or `blocked_retry`. If none, report "queue clear — nothing left to dispatch" and stop.
 3. Read `.claude/workflow.json` (if present). Extract:
    - `pipeline_mode` — `"full"` (default) runs every slice through Bishop + Tiger Claw; `"lightweight"` runs those gates only on slices with `review_required: true`.
@@ -20,7 +33,39 @@ The user has invoked `/mutagen:execute-next`. You orchestrate the full execution
    - `review_required` (lightweight mode only)
    - `attempts` (starts at 0 on a fresh slice; carries the count if the slice was previously `blocked_retry`)
    - `context_to_update` (`project_state.md` or `infrastructure_state.md`)
-5. Initialise the active-slice state file with the **author** stage's scope. Per-stage rotation rewrites this file at each stage transition so the PreToolUse guard only grants the exact paths a given agent needs:
+5. **Build the Evidence Bundle for this slice.** From the slice's `traces_to` block, resolve every citation to a verbatim excerpt out of the bundle docs you cached in Session preflight. The bundle is reused for every spawn in this slice (author, Bishop, Tiger Claw, and any retry author re-spawn) — assemble it once.
+
+   Citation forms to handle:
+   - `[FR-NNN]` / `[NFR-NNN]` → grep PRD for the bracketed ID; include the line plus the parent bullet/section header (typically 2–10 lines)
+   - `ADR-NNNN` → include the entire ADR file (they're short and the Decision section without Context is often misleading)
+   - DDD element (aggregate / command / query / event named in `traces_to.ddd`) → include the named section verbatim, plus any `[INV-N]` lines under it
+   - `[ISC-NNN]` → grep ISC for the bracketed ID; include the line plus surrounding context that defines the invariant and its detection
+   - `[DSD-NNN]` → grep DSD for the bracketed ID; include the rule line and the section heading it sits under
+
+   Structure the bundle as:
+
+   ```
+   ## Evidence Bundle for <slice_id>
+
+   ### PRD citations
+   <verbatim excerpts, one block per [FR-*]/[NFR-*]>
+
+   ### ADR(s)
+   <full ADR text per cited ADR-NNNN>
+
+   ### DDD citations
+   <named element + cited [INV-*] lines>
+
+   ### ISC citations
+   <verbatim excerpts, one block per [ISC-NNN]>
+
+   ### DSD citations
+   <verbatim excerpts, one block per [DSD-NNN]>
+   ```
+
+   If a citation cannot be resolved (ID not found in the cited doc), halt and escalate — the slice queue is referencing evidence that doesn't exist, which is a Shredder bug, not something to paper over.
+
+6. Initialise the active-slice state file with the **author** stage's scope. Per-stage rotation rewrites this file at each stage transition so the PreToolUse guard only grants the exact paths a given agent needs:
 
    ```json
    {
@@ -37,18 +82,18 @@ The user has invoked `/mutagen:execute-next`. You orchestrate the full execution
    ```
 
    For the parallel review stage the `active_agent` field is replaced with `active_agents: ["Bishop", "TigerClaw"]`; the guard doesn't care about the name field (it only evaluates `allowed_write_globs`), but the status command and telemetry do.
-6. Mark the slice `in_progress` in `slices/queue.json` (overwrite status). After every mutation of `queue.json` in any stage below, re-render the markdown: `${CLAUDE_PLUGIN_ROOT}/scripts/render_queue.sh`.
+7. Mark the slice `in_progress` in `slices/queue.json` (overwrite status). After every mutation of `queue.json` in any stage below, re-render the markdown: `${CLAUDE_PLUGIN_ROOT}/scripts/render_queue.sh`.
 
 ## Per-stage scope manifests
 
-The guard (`scripts/guard.sh`) reads `allowed_write_globs` on every Write / Edit. Rewriting that list between stages is the mechanism that enforces per-subagent scope without per-subagent hooks. For each stage below, **overwrite `.claude/state/active-slice.json`** with the manifest shown before spawning.
+The guard (`scripts/guard.sh`) reads `allowed_write_globs` on every Write / Edit. Rewriting that list between stages is the mechanism that enforces per-subagent scope without per-subagent hooks. For each stage below, **overwrite `.mutagen/state/active-slice.json`** with the manifest shown before spawning.
 
 | Stage | `active_agent(s)` | `allowed_write_globs` |
 |-------|-------------------|------------------------|
-| `author` | author agent | author paths (table below) + `project_state.md` + `infrastructure_state.md` + `.claude/state/**` |
-| `karai_structural` | `Karai` | `.claude/state/**` (Karai emits a report; she does not write to project files at this stage) |
-| `review_parallel` | `Bishop`, `TigerClaw` | `reviews/**` + `tests/qa/**` (+ `tests/qa/security/**` when `author_agent == "Tatsu"`) + `.claude/state/**` |
-| `karai_state` | `Karai` | `project_state.md` + `infrastructure_state.md` + `slices/**` + `.claude/state/**` |
+| `author` | author agent | author paths (table below) + `project_state.md` + `infrastructure_state.md` + `.mutagen/state/**` |
+| `karai_structural` | `Karai` | `.mutagen/state/**` (Karai emits a report; she does not write to project files at this stage) |
+| `review_parallel` | `Bishop`, `TigerClaw` | `reviews/**` + `tests/qa/**` (+ `tests/qa/security/**` when `author_agent == "Tatsu"`) + `.mutagen/state/**` |
+| `karai_state` | `Karai` | `project_state.md` + `infrastructure_state.md` + `slices/**` + `.mutagen/state/**` |
 
 The `review_parallel` manifest is the union of what Bishop and Tiger Claw need, and nothing more. Bishop only writes `reviews/{slice_id}.md`; Tiger Claw only writes under `tests/qa/**`. The paths are disjoint, so the narrow union is still tight enough to catch any stray write into production source, author tests, infra, or the design bundle.
 
@@ -75,6 +120,8 @@ Run stages 1 → 4 in order. The retry loop below wraps stages 1 + 3 (author + p
 1. Rotate active-slice.json to the `author` manifest. Bump `attempts` by 1 (first dispatch → 1; first retry → 2; and so on). Mirror `attempts` into `slices/queue.json` for the slice.
 2. Spawn the `author_agent` subagent via the Agent tool. Prompt includes:
    - The slice text (reconstructed from the JSON or copied verbatim from the rendered markdown).
+   - **The Evidence Bundle** assembled in preflight step 5, inlined verbatim.
+   - **Explicit instruction:** *"All upstream evidence required to execute this slice is inlined above as the Evidence Bundle. Do NOT re-read `docs/PRD*`, `docs/ADR*`, `docs/DDD*`, `docs/ISC*`, or `docs/DSD*` — every cited fragment is already in your context. Read source files, tests, and existing project state freely; just don't cold-load the design bundle."*
    - A reminder of the agent's Output Format (see `${CLAUDE_PLUGIN_ROOT}/agents/<Agent>.md`).
    - Instruction to write the State Update block to `context_to_update`.
    - **On retry only:** attach every `Suggested Fix` from the prior review stage's reports (Bishop's per-Block `Suggested Fix`, Tiger Claw's per-Defect `Suggested Fix`, or both if both blocked). Include the full Review Report and QA Report at the end of the prompt so the author has surrounding evidence, but highlight the Suggested Fix blocks up front. Instruct the author to address each fix in order and to keep the change minimal — do not refactor around the fix.
@@ -83,7 +130,7 @@ Run stages 1 → 4 in order. The retry loop below wraps stages 1 + 3 (author + p
 ### Stage 2 — Karai structural conformance
 
 1. Rotate active-slice.json to the `karai_structural` manifest.
-2. Spawn Karai with the author's output. She validates against the Conformance Validation checklist for the author agent.
+2. Spawn Karai with the author's output **and the slice text** (no Evidence Bundle needed — her checks are structural: required-section presence, identifier shape, traces-to drift, LOC vs target). She validates against the Conformance Validation checklist for the author agent.
 3. On failure (missing / empty required section, mis-filed state block, identifier mismatch, traces-to drift, LOC > 120 % of target): **halt** the pipeline — this is not retryable by the author within this command; it is a structural break that needs the human. Mark `slices/queue.json` → `verdicts.karai_structural: "fail"`, `status: "escalated"`, `escalation_reason: "<from Karai>"`. Escalate with Karai's report verbatim. **Do not** clear active-slice.json. **Do not auto-advance** — stop here and wait for the user. Before stopping, fire a Pushover halt notification: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/notify.sh structural_fail "mutagen — structural fail on {slice_id}" "Karai halted {slice_id} ({title}) at stage karai_structural: {short reason from report}. Needs human input."` — the script silently no-ops when Pushover is not configured.
 4. On pass: record `verdicts.karai_structural: "pass"`. Continue.
 
@@ -94,13 +141,13 @@ Run stages 1 → 4 in order. The retry loop below wraps stages 1 + 3 (author + p
 Otherwise:
 
 1. Rotate active-slice.json to the `review_parallel` manifest.
-2. **Dispatch Bishop and Tiger Claw in a single assistant turn.** Issue both Agent tool calls in the *same* message — one `subagent_type: "Bishop"`, one `subagent_type: "TigerClaw"` — so Claude Code runs them concurrently. Each gets the slice artifacts and the author's output independently; neither sees the other's findings.
+2. **Dispatch Bishop and Tiger Claw in a single assistant turn.** Issue both Agent tool calls in the *same* message — one `subagent_type: "Bishop"`, one `subagent_type: "TigerClaw"` — so Claude Code runs them concurrently. Each gets the slice artifacts, the **Evidence Bundle from preflight step 5** (same text the author received), the author's output, and the same *"do not re-read upstream docs"* instruction. They evaluate against the inlined evidence; neither sees the other's findings.
 3. Wait for both to return, then record verdicts in `slices/queue.json`:
    - Bishop: 🟢 Clean → `"clean"`; 🟡 Advisory → `"advisory"`; ⏭ Skip → `"skip"`; 🔴 Block → `"block"`.
    - Tiger Claw: 🟢 Clean → `"clean"`; 🟡 Gap → `"gap"`; ⏭ Skip → `"skip"`; 🔴 Defect → `"defect"`.
 4. Before any rotation out of this stage, **persist both reports** so the retry path has them:
    - Bishop writes his Review Report to `reviews/{slice_id}.md` directly — already persistent.
-   - Capture Tiger Claw's QA Report to `.claude/state/tiger-claw-report.md` (clobber-on-write is fine; only one slice is active at a time).
+   - Capture Tiger Claw's QA Report to `.mutagen/state/tiger-claw-report.md` (clobber-on-write is fine; only one slice is active at a time).
 5. Evaluate the joint verdict:
    - Both non-🔴 (clean / advisory / gap / skip in any combination) → continue to Stage 4.
    - Either 🔴 Block or 🔴 Defect (or both) → enter the **re-review retry loop** below. On retry, the author gets *every* Suggested Fix from whichever reports blocked; if Bishop was 🟢/🟡 and only Tiger Claw fired, attach only Tiger Claw's, and vice versa.
@@ -114,7 +161,7 @@ Otherwise:
 ### Stage 5 — Record & advance
 
 1. Re-render `slices/queue.md` from the updated JSON: `${CLAUDE_PLUGIN_ROOT}/scripts/render_queue.sh`.
-2. Clear `.claude/state/active-slice.json`.
+2. Clear `.mutagen/state/active-slice.json`.
 3. Report the slice summary + telemetry (attempts, Bishop verdict, Tiger Claw verdict, any heartbeat anomalies from `scripts/heartbeat.sh`) to the user as a short update — enough that progress is visible, terse enough that it doesn't bury the next slice's report.
 4. **Auto-advance.** If the queue still has a `pending` or `blocked_retry` slice, jump straight back to **Preflight** and run the next one. Do not wait for a fresh prompt, do not ask for permission. Keep looping until one of the stop conditions below fires.
 
@@ -134,7 +181,7 @@ Halt the loop (and do not clear active-slice.json) when any of the following hap
 
 Triggered by Bishop 🔴 Block or Tiger Claw 🔴 Defect (or both) from Stage 3.
 
-1. Read the current `attempts` from `.claude/state/active-slice.json`.
+1. Read the current `attempts` from `.mutagen/state/active-slice.json`.
 2. If `attempts >= max_retries + 1`, the retry budget is exhausted:
    - Mark `slices/queue.json` → `status: "escalated"`, `escalation_reason: "Bishop Block / Tiger Claw Defect after N attempts"` (name whichever reviewers blocked). Leave the verdicts recorded.
    - Re-render `slices/queue.md`.
@@ -144,7 +191,7 @@ Triggered by Bishop 🔴 Block or Tiger Claw 🔴 Defect (or both) from Stage 3.
    - Wait for user instruction (amend scope via `/mutagen:amend-scope`, re-slice via `/mutagen:slice`, fix in place manually, abandon).
 3. Otherwise, retry is allowed:
    - Mark `slices/queue.json` → `status: "blocked_retry"`. Re-render.
-   - Confirm the triggering reports are persisted (Bishop: `reviews/{slice_id}.md`; Tiger Claw: `.claude/state/tiger-claw-report.md`).
+   - Confirm the triggering reports are persisted (Bishop: `reviews/{slice_id}.md`; Tiger Claw: `.mutagen/state/tiger-claw-report.md`).
    - Loop back to **Stage 1 (Author)**. The author is re-dispatched with every Suggested Fix from every reviewer that blocked (only the ones that fired — don't attach reports from a reviewer that returned 🟢 / 🟡 / ⏭). After Stage 1 returns, proceed through Stage 2, then Stage 3 re-runs Bishop and Tiger Claw **both fresh and in parallel** again, regardless of which one had blocked previously.
    - `attempts` is bumped in Stage 1 (not here); only the status flip + report capture happen here.
 
@@ -154,7 +201,7 @@ Bishop and Tiger Claw re-run fresh on each retry; their prior reports are not tr
 
 ## On any escalation
 
-- Do **not** clear `.claude/state/active-slice.json`.
+- Do **not** clear `.mutagen/state/active-slice.json`.
 - Do **not** rotate stages further — leave the manifest at the stage that halted.
 - Present the failing gate's report(s) to the user verbatim.
 - Ensure `slices/queue.json` has `status: "escalated"` (or `"refused"` for intake refusal) and a populated `escalation_reason`; re-render `slices/queue.md`.

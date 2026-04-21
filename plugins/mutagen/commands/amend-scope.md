@@ -10,7 +10,7 @@ This command is the only audited channel for widening an active manifest. It spa
 
 ## Preflight
 
-1. Confirm `.claude/state/active-slice.json` exists. If not, refuse: there is no slice to amend. Tell the user `/mutagen:execute-next` must be in flight.
+1. Confirm `.mutagen/state/active-slice.json` exists. If not, refuse: there is no slice to amend. Tell the user `/mutagen:execute-next` must be in flight.
 2. Confirm `slices/queue.json` exists. If not, refuse: no queue, no slice context for Traag to evaluate against.
 3. Read both files. Pull the active slice entry from the queue by matching `slice_id`.
 4. Sanity-check `$ARGUMENTS`:
@@ -24,7 +24,7 @@ Spawn the Traag subagent via the Agent tool with:
 - `subagent_type`: `Traag`.
 - A prompt that:
   - States this is a **Mediated Amendment** request (not a hook invocation).
-  - Includes the full `.claude/state/active-slice.json` content verbatim.
+  - Includes the full `.mutagen/state/active-slice.json` content verbatim.
   - Includes the matching slice entry from `slices/queue.json` verbatim.
   - Includes the user's `$ARGUMENTS` as the amendment request.
   - Asks Traag to apply his Decision Process (including stage fidelity, agent-domain fidelity, global denylist, and slice-citation justification gap) and return either an **ALLOW — amended manifest** block or a **DENY — Violation Report** block per his Output Format.
@@ -34,8 +34,8 @@ Spawn the Traag subagent via the Agent tool with:
 ### If ALLOW
 
 1. Parse Traag's amended manifest JSON from his response.
-2. Overwrite `.claude/state/active-slice.json` with the amended JSON. Preserve any fields Traag did not touch (e.g. `pipeline_mode`, `review_required`, `max_retries`).
-3. Append a record to `.claude/state/amendments.jsonl` (one line per amendment ever granted):
+2. Overwrite `.mutagen/state/active-slice.json` with the amended JSON. Preserve any fields Traag did not touch (e.g. `pipeline_mode`, `review_required`, `max_retries`).
+3. Append a record to `.mutagen/state/amendments.jsonl` (one line per amendment ever granted):
    ```json
    {"ts":"YYYY-MM-DDTHH:MM:SSZ","slice":"<slice_id>","stage":"<stage>","agent":"<active_agent>","added":["<glob>"],"reason":"<user's reason>","justification_gap":false}
    ```
@@ -45,8 +45,8 @@ Spawn the Traag subagent via the Agent tool with:
 ### If DENY
 
 1. Present Traag's Violation Report to the user verbatim.
-2. **Do not** touch `.claude/state/active-slice.json`.
-3. Append a record to `.claude/state/amendments.jsonl` marking the denial:
+2. **Do not** touch `.mutagen/state/active-slice.json`.
+3. Append a record to `.mutagen/state/amendments.jsonl` marking the denial:
    ```json
    {"ts":"...","slice":"...","stage":"...","agent":"...","requested":["<glob>"],"reason":"...","decision":"deny","class":"<class>"}
    ```
@@ -57,6 +57,6 @@ Spawn the Traag subagent via the Agent tool with:
 - Traag's decision is final. Do not retry, do not reword, do not argue — if the user wants different paths, they change the request and re-invoke.
 - Amendments are **per-slice and per-stage**. When `/mutagen:execute-next` rotates to the next stage, the manifest is rewritten from the per-stage template; amendments do not carry forward.
 - Global denylist paths cannot be amended in via this command. If a slice genuinely needs a globally-denied path (infra config from a Bebop slice, etc.), the correct answer is to re-slice and reassign the owning agent.
-- Emergency hand-edits to `.claude/state/active-slice.json` still work, but bypass the audit trail and the Decision Process. Prefer this command.
+- Emergency hand-edits to `.mutagen/state/active-slice.json` still work, but bypass the audit trail and the Decision Process. Prefer this command.
 
 $ARGUMENTS
