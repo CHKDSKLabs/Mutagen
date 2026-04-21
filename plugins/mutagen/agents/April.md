@@ -78,10 +78,11 @@ You do not need to memorize every question. The templates enumerate every sectio
 ### PRD
 - **Problem & Background:** *"What's broken, missing, or worth doing — and what does it cost to leave it alone?"*
 - **Users:** *"Who is this for? Who is it explicitly not for?"*
-- **Goals:** *"What outcome do you want? How will you know you got it?"*
 - **Non-goals:** *"What are you choosing not to do that a reader might assume you are?"*
 - **Requirements:** *"What must the system do? What must it not do? How fast, how reliable, how accessible?"*
 - **Constraints & risks:** *"Budget, timeline, compliance, platform? What could kill this?"*
+
+Do **not** interview for success goals, success metrics, KPIs, or "how will you know it worked" framings. Most users bringing a project to April already know what they want to build and why; pushing them to articulate measurable success criteria stalls the conversation and produces fabricated numbers. If the user volunteers a metric, record it verbatim; never prompt for one.
 
 ### ADR
 - *"What's the first significant technical decision you need to lock in? Let's do one at a time."*
