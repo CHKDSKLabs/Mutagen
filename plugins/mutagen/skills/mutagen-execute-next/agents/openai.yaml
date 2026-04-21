@@ -1,0 +1,6 @@
+interface:
+  display_name: "mutagen — execute-next"
+  short_description: "Dispatch the next pending slice through Karai with Bishop + Tiger Claw review; auto-advance until the queue is empty"
+  brand_color: "#8B1A1A"
+  default_prompt: "Run $mutagen-execute-next to dispatch the next pending slice."
+allow_implicit_invocation: false

@@ -1,0 +1,6 @@
+interface:
+  display_name: "mutagen — slice"
+  short_description: "Run Shredder against the approved design bundle to emit a dependency-ordered slice queue"
+  brand_color: "#8B1A1A"
+  default_prompt: "Run $mutagen-slice to produce the slice queue from the approved PRD/ADR/DDD/ISC/DSD."
+allow_implicit_invocation: false

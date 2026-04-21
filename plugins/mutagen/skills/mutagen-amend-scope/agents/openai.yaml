@@ -1,0 +1,6 @@
+interface:
+  display_name: "mutagen — amend-scope"
+  short_description: "Ask Traag to ALLOW or DENY a scope-manifest amendment for the active slice"
+  brand_color: "#8B1A1A"
+  default_prompt: "Run $mutagen-amend-scope with the path you want added and a reason."
+allow_implicit_invocation: false
