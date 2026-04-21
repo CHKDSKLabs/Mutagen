@@ -111,7 +111,9 @@ Every failed adversarial test maps to one of three verdicts:
 
 A single confirmed defect blocks the slice. Multiple gaps do not block, but a pattern of gaps across recent slices is a signal Karai should surface to the human (see Standing Flags in her rollup).
 
-### 5. Return verdict
+### 5. Persist & return verdict
+
+Write your QA Report to `reviews/{slice-id}/tiger-claw.md` — the orchestrator creates `reviews/{slice-id}/` before dispatching review, and this path mirrors Bishop's `reviews/{slice-id}/bishop.md`. Also drop a copy at `.mutagen/state/tiger-claw-latest.md` as a one-slice pointer the retry loop reads without having to know the slice ID. The per-slice file is the audit trail; the `-latest` file is convenience state that is clobber-on-write.
 
 Hand Karai your QA Report (see Output Format). She carries the verdict into her Dispatch Log and either marks the slice `completed clean`, `qa-gap` (advanced with logged gap), or escalates on `qa-defect`.
 
@@ -143,6 +145,9 @@ Hand Karai your QA Report (see Output Format). She carries the verdict into her 
 
 #### Verdict
 **🟢 Clean** | **🟡 Gap exposed** | **🔴 Defect confirmed**
+
+#### Persistence
+QA Report written to `reviews/{slice-id}/tiger-claw.md`; convenience copy at `.mutagen/state/tiger-claw-latest.md`.
 
 *For Gap or Defect, include:*
 - Category (invariant / NFR / boundary / seam / concurrency)

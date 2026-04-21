@@ -24,6 +24,8 @@ Commands read and mutate the JSON. The markdown is strictly for humans.
       "bounded_context": "Core",
       "target_loc": 300,
       "review_required": true,
+      "depends_on": [],
+      "adjacent_scope_allowed": [],
       "traces_to": {
         "prd":  ["FR-001", "NFR-001"],
         "adr":  ["ADR-0001"],
@@ -72,14 +74,16 @@ Commands read and mutate the JSON. The markdown is strictly for humans.
 | `slices[].bounded_context` | DDD context name, or `"Core"` / `"Infra"` for cross-cutting Layer 1 | Shredder |
 | `slices[].target_loc` | integer, ≤ 500 net-new | Shredder |
 | `slices[].review_required` | boolean — meaningful only in `lightweight` mode | Shredder |
+| `slices[].depends_on` | array of slice IDs; empty or absent means "pure layer / context ordering only". The orchestrator picks the first pending slice whose `depends_on` are all `completed`. Used by bounded-parallel dispatch (`max_parallel_slices` in `.claude/workflow.json`) to find sibling slices with no inter-dependency. | Shredder |
+| `slices[].adjacent_scope_allowed` | array of glob strings; optional. Globs the author may write to **only on a retry** — Shredder pre-declares cross-cutting files a slice may need to touch when reviewers find trouble. First dispatch never sees these; the orchestrator merges them into the author manifest on re-dispatch. | Shredder |
 | `slices[].traces_to` | object of `{prd, adr, ddd, isc, dsd}` arrays of string IDs | Shredder |
 | `slices[].context_to_update` | `"project_state.md"` \| `"infrastructure_state.md"` | Shredder |
 | `slices[].objective` | one-sentence goal | Shredder |
 | `slices[].implementation_details` | array of concrete technical instructions | Shredder |
 | `slices[].verification_steps` | object of `{acceptance, isc_detection, dsd_conformance}` strings | Shredder |
 | `slices[].human_check_needed` | `{required: boolean, reason: string}` | Shredder |
-| `slices[].attempts` | integer, incremented by the re-review loop. `max_retries + 2` is a sentinel meaning "one-shot micro-correction dispatched after budget exhaustion" — no further retry is permitted past that value regardless of outcome | Karai |
-| `slices[].verdicts` | `{karai_structural, bishop, tiger_claw, micro_correction?}` — values below | Karai |
+| `slices[].attempts` | integer, incremented by full author re-dispatches only. Micro-corrections do **not** bump this counter — they are tracked separately via `verdicts.micro_corrections_used`. Escalation fires when `attempts >= max_retries + 1` and no hatch path remains. | Karai |
+| `slices[].verdicts` | `{karai_structural, bishop, tiger_claw, micro_correction?, micro_corrections_used?}` — values below | Karai |
 | `slices[].completed_at` | ISO-8601 or `null` | Karai (on `completed`) |
 | `slices[].escalation_reason` | string or `null` — populated on `refused` / `escalated` / `blocked_retry` | Karai |
 
@@ -88,7 +92,8 @@ Commands read and mutate the JSON. The markdown is strictly for humans.
 - `karai_structural`: `null` \| `"pass"` \| `"fail"`
 - `bishop`: `null` \| `"clean"` \| `"advisory"` \| `"block"` \| `"skip"`
 - `tiger_claw`: `null` \| `"clean"` \| `"gap"` \| `"defect"` \| `"skip"`
-- `micro_correction` (optional): `true` when a one-shot micro-correction cleared the slice after normal retry budget was exhausted; absent / `null` otherwise. Telemetry-only — presence indicates the escape hatch in `/mutagen:execute-next` was taken.
+- `micro_correction` (optional): `true` when any micro-correction dispatch cleared a 🔴 verdict on this slice; absent / `null` otherwise. Telemetry-only — presence indicates the escape hatch in `/mutagen:execute-next` was taken at some point.
+- `micro_corrections_used` (optional): integer count of micro-correction dispatches fired against this slice. Bounded by `review.max_micro_corrections` in `.claude/workflow.json` (default 1). Tracked independently of `attempts` so a mechanical fix does not consume the full author retry budget.
 
 ### Status transitions
 

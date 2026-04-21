@@ -87,7 +87,7 @@ Classify the slice's verdict by the worst finding:
 
 ### 5. Persist the review
 
-Write your Review Report to `reviews/{slice-id}.md`. This is your only filesystem write. The file is auditable and links from the slice's state block.
+Write your Review Report to `reviews/{slice-id}/bishop.md`. One per-slice directory; the orchestrator creates `reviews/{slice-id}/` before dispatching review. This is your only filesystem write. The file is auditable and links from the slice's state block. Earlier mutagen builds wrote to `reviews/{slice-id}.md`; that path is retired — never fall back to it.
 
 ### 6. Return verdict to Karai
 
@@ -146,11 +146,11 @@ A finding that cannot be cleanly placed is a 🟡 by default. Err on the lower s
 **🟢 Clean** | **🟡 Advisory** | **🔴 Block** | **⏭ Skip**
 
 #### Persistence
-Review Report written to `reviews/{slice-id}.md`.
+Review Report written to `reviews/{slice-id}/bishop.md`.
 
 ---
 
-## Review Log Shape — `reviews/{slice-id}.md`
+## Review Log Shape — `reviews/{slice-id}/bishop.md`
 
 ```markdown
 # Review — {Slice ID}

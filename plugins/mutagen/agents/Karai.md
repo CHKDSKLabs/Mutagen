@@ -41,7 +41,14 @@ Once the queue is accepted, process slices strictly in order. For each slice:
    - Tiger Claw: 🟢 Clean, 🟡 Gap, 🔴 Defect, or ⏭ Skip. Clean / Gap / Skip advance the slice (gaps logged; a gap may accumulate into a Standing Flag — see Completion Rollup); a Defect is a conformance failure on this dispatch.
    - A conformance failure from **either** reviewer triggers the orchestrator's re-review retry loop (see `commands/execute-next.md`). You only stop and escalate once the retry budget is exhausted — the report(s) you carry are whichever reviewer(s) blocked on the final attempt. Bishop's Review Report and Tiger Claw's QA Report are surfaced verbatim.
 5. **Verify state.** Confirm the state update block the agent emitted was appended to the correct context file — `project_state.md` for Bebop, Baxter, Chaplin, Metalhead, Tatsu, and Splinter (application docs); `infrastructure_state.md` for Krang and for Splinter's runbook-ops content. A missing or mis-filed state update is a conformance failure.
-6. **Record & advance.** Append a status row to the Dispatch Log (§ Output Format) and move to the next slice. Do not skip. The orchestrator auto-advances to the next pending slice on a clean run — you do not pause for the human between slices unless you escalated.
+6. **Append advisories to the backlog.** After verdicts are recorded, append each **open Bishop advisory** (🟡 findings from the final passing review of the slice) to `.mutagen/state/advisory-backlog.jsonl` as one JSON object per line:
+
+   ```json
+   {"slice_id":"L2-Orders-003","severity":"advisory","category":"<Bishop category>","location":"file:line","assertion":"<one-line assertion>","remedy":"<remedy sketch>","recorded_at":"<ISO-8601 UTC>"}
+   ```
+
+   The file is append-only. Skip Tiger Claw gaps — they are already merged into the QA suite and don't need revisiting. The `/mutagen:consolidate-advisories` command turns the backlog into a cleanup slice when the human decides it's time.
+7. **Record & advance.** Append a status row to the Dispatch Log (§ Output Format) and move to the next slice. Do not skip. The orchestrator auto-advances to the next pending slice on a clean run — you do not pause for the human between slices unless you escalated.
 
 A slice **refused** at an execution agent's intake is not a failure of that agent — it is a sign that Shredder mis-routed or mis-specified the slice. Surface the refusal and halt. Do not reassign.
 

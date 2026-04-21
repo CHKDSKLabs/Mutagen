@@ -12,6 +12,13 @@
 #   traag_deny         — alias for scope_violation
 #   queue_clear        — the queue ran to completion (opt-in, low priority)
 #   user_interrupt     — auto-advance paused because the user sent input
+#   layer_complete     — the last pending slice in a layer closed (opt-in)
+#   milestone          — generic progress marker (opt-in); title / message carry detail
+#
+# Milestone events (layer_complete, milestone) are additionally gated by
+# .claude/workflow.json notify.milestones — if set, the event name must appear
+# in that array or the notification is dropped. When the key is absent, the
+# milestone fires normally (subject to the usual enabled / quiet_events checks).
 #
 # Config precedence (first non-empty wins):
 #   1. Env: PUSHOVER_USER_KEY, PUSHOVER_APP_TOKEN
@@ -24,6 +31,9 @@
 #              "app_token": "...",
 #              "quiet_events": ["queue_clear"]
 #            }
+#          },
+#          "notify": {
+#            "milestones": ["layer_complete"]
 #          }
 #        }
 #
@@ -43,13 +53,30 @@ cfg_user_key=""
 cfg_app_token=""
 cfg_enabled="false"
 cfg_quiet=""
+cfg_milestones=""
+cfg_milestones_present="false"
 
 if [ -r .claude/workflow.json ] && command -v jq >/dev/null 2>&1; then
   cfg_user_key=$(jq -r '.notifications.pushover.user_key // ""' .claude/workflow.json 2>/dev/null || echo "")
   cfg_app_token=$(jq -r '.notifications.pushover.app_token // ""' .claude/workflow.json 2>/dev/null || echo "")
   cfg_enabled=$(jq -r '(.notifications.pushover.enabled // false) | tostring' .claude/workflow.json 2>/dev/null || echo "false")
   cfg_quiet=$(jq -r '(.notifications.pushover.quiet_events // []) | join(",")' .claude/workflow.json 2>/dev/null || echo "")
+  cfg_milestones_present=$(jq -r '(.notify.milestones // null) | (. != null) | tostring' .claude/workflow.json 2>/dev/null || echo "false")
+  cfg_milestones=$(jq -r '(.notify.milestones // []) | join(",")' .claude/workflow.json 2>/dev/null || echo "")
 fi
+
+# Milestone gating: if .notify.milestones is set, drop milestone-class events
+# that aren't in the list. Absence of the key = fire normally.
+case "$event" in
+  layer_complete|milestone)
+    if [ "$cfg_milestones_present" = "true" ]; then
+      case ",$cfg_milestones," in
+        *",$event,"*) : ;;
+        *) exit 0 ;;
+      esac
+    fi
+    ;;
+esac
 
 user_key="${PUSHOVER_USER_KEY:-$cfg_user_key}"
 app_token="${PUSHOVER_APP_TOKEN:-$cfg_app_token}"
@@ -73,7 +100,7 @@ esac
 priority=0
 case "$event" in
   escalation|structural_fail|scope_violation|retry_exhausted|traag_deny) priority=1 ;;
-  queue_clear|user_interrupt) priority=0 ;;
+  queue_clear|user_interrupt|layer_complete|milestone) priority=0 ;;
 esac
 
 if ! command -v curl >/dev/null 2>&1; then
