@@ -182,8 +182,27 @@ Halt the loop (and do not clear active-slice.json) when any of the following hap
 Triggered by Bishop 🔴 Block or Tiger Claw 🔴 Defect (or both) from Stage 3.
 
 1. Read the current `attempts` from `.mutagen/state/active-slice.json`.
-2. If `attempts >= max_retries + 1`, the retry budget is exhausted:
-   - Mark `slices/queue.json` → `status: "escalated"`, `escalation_reason: "Bishop Block / Tiger Claw Defect after N attempts"` (name whichever reviewers blocked). Leave the verdicts recorded.
+2. If `attempts >= max_retries + 1`, the normal retry budget is exhausted. Before escalating, evaluate the **micro-correction escape hatch** — if the remaining blocker is mechanical and you already know the fix, dispatch it instead of asking the human "which path?".
+
+   **Escape hatch conditions** — all must hold. Bias toward plowing ahead: the conditions are there to catch real structural uncertainty, not to justify hedging. If the orchestrator can confidently answer yes to each, take the hatch.
+
+   - **Convergence.** Either only one reviewer fired (the other is 🟢 / 🟡 / ⏭), or both blocked on the *same* defect — same file(s), same root cause when stated in prose. Disjoint blockers from the two reviewers → no hatch.
+   - **Mechanical scope.** The fix is ≲ 20 LOC and confined to test updates, wiring (DI, constructor params), imports, a missed rename, a stale comment, or similar plumbing. No new behavior, no contract change, no ADR / DDD / ISC / DSD implication, no algorithmic doubt.
+   - **Named fix.** You can state the exact file(s), the exact change, and point at a reviewer's `Suggested Fix` block that matches. Paraphrasing, guessing, or "try X and see" → no hatch.
+   - **In-scope executor.** The fix path sits inside the slice's `author_agent` globs, or inside Bebop's globs (Bebop is the fallback fixer for test / wiring misses when the original author's globs don't cover the file).
+
+   If all four hold, dispatch a **one-shot micro-correction** and continue the pipeline:
+
+   1. Rotate `active-slice.json` to the `author` manifest. Choose the executor: the current `author_agent` if the fix sits in their globs, otherwise Bebop. Record the chosen agent in `active_agent`.
+   2. Bump `attempts` to `max_retries + 2` and mirror into `slices/queue.json`. This marker forbids any further retry regardless of outcome — the hatch is one-shot.
+   3. Prompt the executor with the Evidence Bundle (unchanged), the author's last output, and a tight micro-correction instruction: the cited `Suggested Fix` block verbatim, the exact file(s) and change, and the explicit rule *"change only what is named here — no refactor, no tangential cleanup, no scope expansion."*
+   4. On return, run Stage 2 (Karai structural) normally, then Stage 3 (Bishop ∥ Tiger Claw) **one more time**.
+   5. If both reviewers return non-🔴 → normal Stage 4 completion. Record `verdicts.micro_correction: true` in `slices/queue.json` for telemetry. Auto-advance as usual.
+   6. If anything blocks again → **hard escalate** per the branch below. No second micro-correction, no further budget.
+
+   **Escalation** — reached when the hatch conditions don't hold, or the one-shot micro-correction returned a fresh block:
+
+   - Mark `slices/queue.json` → `status: "escalated"`, `escalation_reason: "Bishop Block / Tiger Claw Defect after N attempts"` (name whichever reviewers blocked; note `micro_correction_attempted: true` when applicable). Leave the verdicts recorded.
    - Re-render `slices/queue.md`.
    - **Do not** clear active-slice.json.
    - **Fire a Pushover notification:** `bash ${CLAUDE_PLUGIN_ROOT}/scripts/notify.sh escalation "mutagen — halted at {slice_id}" "{slice_id} ({title}) escalated after {N} attempts. Blocked by: {Bishop and/or Tiger Claw}. Needs human input."` — silent no-op when Pushover is not configured.

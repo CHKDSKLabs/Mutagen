@@ -78,8 +78,8 @@ Commands read and mutate the JSON. The markdown is strictly for humans.
 | `slices[].implementation_details` | array of concrete technical instructions | Shredder |
 | `slices[].verification_steps` | object of `{acceptance, isc_detection, dsd_conformance}` strings | Shredder |
 | `slices[].human_check_needed` | `{required: boolean, reason: string}` | Shredder |
-| `slices[].attempts` | integer, incremented by the re-review loop | Karai |
-| `slices[].verdicts` | `{karai_structural, bishop, tiger_claw}` — values below | Karai |
+| `slices[].attempts` | integer, incremented by the re-review loop. `max_retries + 2` is a sentinel meaning "one-shot micro-correction dispatched after budget exhaustion" — no further retry is permitted past that value regardless of outcome | Karai |
+| `slices[].verdicts` | `{karai_structural, bishop, tiger_claw, micro_correction?}` — values below | Karai |
 | `slices[].completed_at` | ISO-8601 or `null` | Karai (on `completed`) |
 | `slices[].escalation_reason` | string or `null` — populated on `refused` / `escalated` / `blocked_retry` | Karai |
 
@@ -88,6 +88,7 @@ Commands read and mutate the JSON. The markdown is strictly for humans.
 - `karai_structural`: `null` \| `"pass"` \| `"fail"`
 - `bishop`: `null` \| `"clean"` \| `"advisory"` \| `"block"` \| `"skip"`
 - `tiger_claw`: `null` \| `"clean"` \| `"gap"` \| `"defect"` \| `"skip"`
+- `micro_correction` (optional): `true` when a one-shot micro-correction cleared the slice after normal retry budget was exhausted; absent / `null` otherwise. Telemetry-only — presence indicates the escape hatch in `/mutagen:execute-next` was taken.
 
 ### Status transitions
 
