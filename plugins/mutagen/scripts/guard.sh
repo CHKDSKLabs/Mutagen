@@ -78,8 +78,11 @@ STATE_FILE="${CWD:-.}/.claude/state/active-slice.json"
 ACTIVE_AGENT=""
 declare -a ALLOWED=()
 if [[ -f "$STATE_FILE" ]]; then
-  ACTIVE_AGENT="$(jq -r '.author_agent // empty' "$STATE_FILE" 2>/dev/null || true)"
+  # WinGet's jq 1.8.1 helpfully CRLFs its stdout regardless of input line endings,
+  # so every glob ends up stored as "glob\r" and matches exactly nothing. Strip it.
+  ACTIVE_AGENT="$(jq -r '.author_agent // empty' "$STATE_FILE" 2>/dev/null | tr -d '\r' || true)"
   while IFS= read -r glob; do
+    glob="${glob%$'\r'}"
     [[ -n "$glob" ]] && ALLOWED+=("$glob")
   done < <(jq -r '.allowed_write_globs[]? // empty' "$STATE_FILE" 2>/dev/null || true)
 fi
