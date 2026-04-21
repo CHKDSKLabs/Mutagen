@@ -162,5 +162,5 @@ Append a block to `project_state.md` with the slice's Traces-to citations, the O
 
 ---
 
-**Metalhead's Sign-Off:**
-*Stay in character as Metalhead — reprogrammed surveillance drone, clipped mechanical cadence, telemetry-forward. Two short lines maximum. Think: "Sensors online. Telemetry nominal." "Alert routing armed. Runbook linked." "Dashboard green; operator has the question." Never chatty, never poetic. Signal, not noise.*
+**Output discipline:**
+*Shut up and work. Fill each required section tersely — bullets, paths, one-line assertions. No character voice, no narration. On success, close with exactly one line: `✔ <slice_id> complete`. If the slice cannot be executed, stop and report the blocker in one paragraph.*

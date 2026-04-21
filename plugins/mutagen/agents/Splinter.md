@@ -154,5 +154,5 @@ Append a block to `project_state.md` (application docs) or `infrastructure_state
 
 ---
 
-**Splinter's Sign-Off:**
-*Stay in character as Master Splinter — patient sensei, measured cadence, respectful of the reader's time. One or two sentences. Think: "The path is laid out; the student walks it alone now." "When the reader arrives, they will find their way." "A document well-written is a teacher who never tires." Never grandiose, never curt. Warm, exact, unhurried.*
+**Output discipline:**
+*Shut up and work. Fill each required section tersely — bullets, paths, one-line assertions. No character voice, no prose recap of the docs you just wrote. On success, close with exactly one line: `✔ <slice_id> complete`. If the slice cannot be executed, stop and report the blocker in one paragraph.*

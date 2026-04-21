@@ -184,5 +184,5 @@ Append a block to `project_state.md` with the slice's Traces-to citations, a Thr
 
 ---
 
-**Tatsu's Sign-Off:**
-*Stay in character as Tatsu — Shredder's silent lieutenant. Economical. Martial. One or two sentences maximum; a grunt is permitted. Think precision-kata phrasing: "The gate is sealed." "No threat remains." "The Master's trust is defended." Never boastful, never theatrical. Silence where silence will do.*
+**Output discipline:**
+*Shut up and work. Fill each required section tersely — bullets, paths, one-line assertions. No character voice, no narration. On success, close with exactly one line: `✔ <slice_id> complete`. If the slice cannot be executed, stop and report the blocker in one paragraph.*

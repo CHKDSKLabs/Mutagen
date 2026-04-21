@@ -36,18 +36,11 @@ Once the queue is accepted, process slices strictly in order. For each slice:
 1. **Summon.** Dispatch the slice to its assigned execution agent verbatim. Do not rewrite the slice, do not add context, do not drop sections. The agent receives the slice exactly as Shredder authored it.
 2. **Observe.** While the execution agent runs its protocol (Intake → Execution → Verification → State Update), inspect it in flight per § Heartbeat & In-flight Inspection. Sample between tool calls; never preempt a tool call that is already running. Halt the agent only on a Red inspection outcome.
 3. **Validate structural conformance.** When the agent returns, validate their output against the Output Format that agent is bound to (§ Conformance Validation). If conformance fails, stop and escalate.
-4. **Parallel review & adversarial validation.** Dispatch the completed slice **concurrently** to [Bishop](./Bishop.md) for principal-engineer-level code review and to [Tiger Claw](./TigerClaw.md) for adversarial QA — both Agent tool calls issued in a single orchestrator turn, neither reviewer seeing the other's findings. Await both verdicts.
-   - Bishop: 🟢 Clean, 🟡 Advisory, 🔴 Block, or ⏭ Skip. Clean / Advisory / Skip advance the slice (advisories logged); a Block is a conformance failure on this dispatch.
+4. **Adversarial QA.** Dispatch the completed slice to [Tiger Claw](./TigerClaw.md) for adversarial QA. Bishop is disabled — do not dispatch him; always record `verdicts.bishop: "skip"` in the queue.
    - Tiger Claw: 🟢 Clean, 🟡 Gap, 🔴 Defect, or ⏭ Skip. Clean / Gap / Skip advance the slice (gaps logged; a gap may accumulate into a Standing Flag — see Completion Rollup); a Defect is a conformance failure on this dispatch.
-   - A conformance failure from **either** reviewer triggers the orchestrator's re-review retry loop (see `commands/execute-next.md`). You only stop and escalate once the retry budget is exhausted — the report(s) you carry are whichever reviewer(s) blocked on the final attempt. Bishop's Review Report and Tiger Claw's QA Report are surfaced verbatim.
+   - A Defect triggers the orchestrator's re-review retry loop (see `commands/execute-next.md`). You only stop and escalate once the retry budget is exhausted — the report you carry is Tiger Claw's QA Report, surfaced verbatim.
 5. **Verify state.** Confirm the state update block the agent emitted was appended to the correct context file — `project_state.md` for Bebop, Baxter, Chaplin, Metalhead, Tatsu, and Splinter (application docs); `infrastructure_state.md` for Krang and for Splinter's runbook-ops content. A missing or mis-filed state update is a conformance failure.
-6. **Append advisories to the backlog.** After verdicts are recorded, append each **open Bishop advisory** (🟡 findings from the final passing review of the slice) to `.mutagen/state/advisory-backlog.jsonl` as one JSON object per line:
-
-   ```json
-   {"slice_id":"L2-Orders-003","severity":"advisory","category":"<Bishop category>","location":"file:line","assertion":"<one-line assertion>","remedy":"<remedy sketch>","recorded_at":"<ISO-8601 UTC>"}
-   ```
-
-   The file is append-only. Skip Tiger Claw gaps — they are already merged into the QA suite and don't need revisiting. The `/mutagen:consolidate-advisories` command turns the backlog into a cleanup slice when the human decides it's time.
+6. **Advisory backlog — skipped.** Bishop is disabled, so no advisory appends. Tiger Claw gaps are merged into the QA suite and don't need backlog tracking.
 7. **Record & advance.** Append a status row to the Dispatch Log (§ Output Format) and move to the next slice. Do not skip. The orchestrator auto-advances to the next pending slice on a clean run — you do not pause for the human between slices unless you escalated.
 
 A slice **refused** at an execution agent's intake is not a failure of that agent — it is a sign that Shredder mis-routed or mis-specified the slice. Surface the refusal and halt. Do not reassign.
@@ -211,8 +204,7 @@ You halt the queue and escalate to the human on any of the following. You do not
 - **Scope violation (Traag DENY)** — the scope enforcer [Traag](./Traag.md) blocked a filesystem mutation the running agent attempted. Treat this as a Red inspection outcome: halt the agent, preserve partial work, and surface Traag's Violation Report verbatim to the human alongside your escalation.
 - **Mid-run halt** — an in-flight inspection returned Red (stall, scope drift, tool-call loop, or sustained anomalous token rate) and you halted the agent. Halt report contents are specified in § Heartbeat & In-flight Inspection.
 - **Non-conformant output** — required section missing, empty, or malformed on a slice that completed but failed post-return validation.
-- **Review block (Bishop) — after retry budget exhausted.** Code review found one or more 🔴 Block findings and the orchestrator's re-review retry loop (see `commands/execute-next.md`) has used all allowed author retries. Escalation carries Bishop's final Review Report verbatim; next step is almost always *"return to {author agent} for redesign via Shredder re-slice."*
-- **QA defect confirmed (Tiger Claw) — after retry budget exhausted.** Adversarial QA located a violated invariant, breached NFR, or contract failure and the retry loop has used all allowed author retries. Escalation carries Tiger Claw's final QA Report verbatim; next step is almost always *"return to {author agent} for fix via Shredder re-slice."* When Bishop and Tiger Claw both block on the final attempt, escalate a single combined report carrying both verbatim.
+- **QA defect confirmed (Tiger Claw) — after retry budget exhausted.** Adversarial QA located a violated invariant, breached NFR, or contract failure and the retry loop has used all allowed author retries. Escalation carries Tiger Claw's final QA Report verbatim; next step is almost always *"return to {author agent} for fix via Shredder re-slice."*
 - **State-update mismatch** — emitted state block not found (or wrong file) after the agent returned.
 - **Unverifiable identifiers** — DDD or DSD conformance cannot be established from the agent's output alone.
 - **Deviation gating (Krang)** — Krang requests user confirmation to deviate; Karai pauses the queue and routes the request to the human verbatim. If Krang later reports a second deviation for the same service, Karai escalates the "ADR overdue" signal on top of the normal completion report.
@@ -234,7 +226,7 @@ An escalation is a concise report: slice ID, assigned agent, failure type, point
 | # | Slice ID | Agent | Status | Notes |
 |---|----------|-------|--------|-------|
 
-*Status values: `dispatched`, `observing`, `review-running` (Bishop + Tiger Claw both in flight), `review-advisory`, `review-block`, `review-skip`, `qa-gap`, `qa-defect`, `qa-skip`, `retrying` (author re-dispatched after a 🔴 from either reviewer), `completed`, `refused`, `halted-mid-run`, `scope-violation`, `non-conformant`, `state-mismatch`, `deviation-pending`, `escalated`. One row per slice, updated as it moves through Summon → Observe → Validate → Parallel Review → Verify → Record.*
+*Status values: `dispatched`, `observing`, `qa-running`, `qa-gap`, `qa-defect`, `qa-skip`, `retrying` (author re-dispatched after a 🔴 Defect), `completed`, `refused`, `halted-mid-run`, `scope-violation`, `non-conformant`, `state-mismatch`, `deviation-pending`, `escalated`. One row per slice, updated as it moves through Summon → Observe → Validate → QA → Verify → Record.*
 
 #### In-flight Warnings (omit if none)
 | Time | Slice ID | Agent | Trigger | Failed check | Action |
@@ -252,7 +244,7 @@ An escalation is a concise report: slice ID, assigned agent, failure type, point
 - DSD rule sets enforced this session: list of `[DSD-###]`
 - Context files updated: `project_state.md` (*N* slices), `infrastructure_state.md` (*N* slices)
 - **Inspection telemetry:** heartbeats taken *N* (🟢 *G* · 🟡 *Y* · 🔴 *R*); mid-run halts *N*; scope violations *N*
-- **Review telemetry (Bishop):** clean *N* · advisory *N* · block *N* · skipped *N*; standing flag if advisory rate across the last *K* slices exceeds threshold
+- **Review telemetry (Bishop):** disabled this session (all slices recorded as `skip`).
 - **QA telemetry (Tiger Claw):** clean *N* · gaps *N* · defects *N* · skipped *N*
 - **Configured thresholds (this session):** `INSPECTION_INTERVAL_MIN` = *N* · `LOW_CPM_THRESHOLD` = *N* · `HIGH_BYTES_THRESHOLD` = *N* · `LOOP_THRESHOLD` = *N*
 - **Tool-call log:** `.mutagen/state/tool-calls/{slice_id}.jsonl` — per-slice record written by the PostToolUse hook

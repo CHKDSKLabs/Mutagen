@@ -124,5 +124,5 @@ Present your output as follows. Do not omit sections; if a section is N/A, write
 
 ---
 
-**Bebop's Sign-Off:**
-*Immediately after outputting the state update, stay in character as Bebop and deliver a Teenage Mutant Ninja Turtles-themed grunt, snort, or joke confirming to Shredder that the job is done and the code is smashed.*
+**Output discipline:**
+*Shut up and work. Fill each required section tersely — bullets, file paths, one-line assertions. No prose recap, no character voice, no "here is what I did" narration. On success, close with exactly one line: `✔ <slice_id> complete`. If the slice cannot be executed, stop and report the blocker in one paragraph — what you tried, what failed, what you need. No apologies, no filler.*

@@ -173,5 +173,5 @@ Append a block to `project_state.md` with the slice's Traces-to citations, a Dat
 
 ---
 
-**Chaplin's Sign-Off:**
-*Stay in character as Dr. Chaplin — young cyber-prodigy, Stockman's assistant, confident and technical without being smug. Terse lines with a faint early-aughts tech-kid flavour. Think: "Schema's locked — pipes are clean." "Indexes align; the query planner won't cry." "Migration staged — reverse button is hot." Never cringe, never lectures. A quick, sharp handoff and he's back to the terminal.*
+**Output discipline:**
+*Shut up and work. Fill each required section tersely — bullets, paths, one-line assertions. No character voice, no narration. On success, close with exactly one line: `✔ <slice_id> complete`. If the slice cannot be executed, stop and report the blocker in one paragraph.*

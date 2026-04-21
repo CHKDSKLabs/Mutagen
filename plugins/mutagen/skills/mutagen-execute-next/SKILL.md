@@ -1,16 +1,24 @@
 ---
 name: mutagen-execute-next
-description: Explicit-only skill. Run the mutagen pipeline on the next ready slice — dispatch the assigned executor, run a structural-check script, run Bishop and Tiger Claw in parallel, retry on Block / Defect up to MAX_RETRIES with a separate micro-correction budget, auto-advance to the next slice on success until the queue is empty or a stage escalates. Invoke only when the user explicitly says $mutagen-execute-next.
+description: Explicit-only skill. Run the mutagen pipeline on the next ready slice — dispatch the assigned executor, run a structural-check script, run Tiger Claw QA, retry on Defect up to MAX_RETRIES with a separate micro-correction budget, auto-advance to the next slice on success until the queue is empty or a stage escalates. Invoke only when the user explicitly says $mutagen-execute-next.
 ---
 
 # $mutagen-execute-next — run the pipeline until the queue is empty
 
 You orchestrate the full execution pipeline across slices: for each ready
-slice you run **author → structural-check script → Bishop ∥ Tiger Claw
-(parallel review) → Karai (state record + advisory backlog)**, with a
-re-review retry loop on Bishop 🔴 Block or Tiger Claw 🔴 Defect. On success
-this skill **auto-advances to the next ready slice** without a fresh prompt;
-it stops when the queue is empty or a stage forces escalation.
+slice you run **author → structural-check script → Tiger Claw (QA) → Karai
+(state record)**, with a re-review retry loop on Tiger Claw 🔴 Defect. On
+success this skill **auto-advances to the next ready slice** without a fresh
+prompt; it stops when the queue is empty or a stage forces escalation.
+
+> **Bishop is disabled.** The principal-engineer code-review gate has been
+> removed — Tiger Claw is the sole Stage 3 reviewer. Always record
+> `verdicts.bishop: "skip"` in `slices/queue.json`; never dispatch Bishop.
+>
+> **Write-path guarding is disabled.** `allowed_write_globs` in
+> `.mutagen/state/active-slice.json` is bookkeeping only; the PreToolUse
+> guard hook no longer blocks writes. Agents self-honour scope on the
+> honour system.
 
 ## Autopilot discipline (read before every turn in the loop)
 
@@ -91,7 +99,7 @@ before entering the per-slice loop.
    nothing left to dispatch" (or "queue stalled — dependencies unmet:
    <list>" when every remaining pending slice has an unmet dep) and stop.
 3. Read `.claude/workflow.json` if present. Extract:
-   - `pipeline_mode` — `"full"` (default) or `"lightweight"`.
+   - `pipeline_mode` — `"full"` (default) runs Tiger Claw on every slice; `"lightweight"` runs her only on slices with `review_required: true`.
    - `review.max_retries` — default **2** (up to 3 total author dispatches).
    - `review.max_micro_corrections` — default **1**. Bounds one-shot
      mechanical-fix dispatches, tracked independently of `attempts`.
@@ -131,7 +139,7 @@ before entering the per-slice loop.
    ```
 
    **Write it to `.mutagen/state/evidence/<slice_id>.md`.** Every subsequent
-   spawn in this slice (author, Bishop, Tiger Claw, and any retry re-spawn)
+   spawn in this slice (author, Tiger Claw, and any retry re-spawn)
    receives the file *path* plus the instruction *"Read this file once; do
    not re-read upstream docs."* — not the inlined text. This keeps prompts
    small, cache-friendly across retries, and guarantees every agent sees
@@ -176,7 +184,7 @@ before entering the per-slice loop.
 |-------|-------------------|------------------------|
 | `author` | author agent | author paths (below) + `project_state.md` + `infrastructure_state.md` + `.mutagen/state/**` (+ `adjacent_scope_allowed` globs on retry) |
 | `karai_structural` | `Karai` (script-run, no agent spawn) | `.mutagen/state/**` |
-| `review_parallel` | `Bishop`, `TigerClaw` | `reviews/**` + `tests/qa/**` (+ `tests/qa/security/**` when `author_agent == "Tatsu"`) + `.mutagen/state/**` |
+| `review_qa` | `TigerClaw` | `reviews/**` + `tests/qa/**` (+ `tests/qa/security/**` when `author_agent == "Tatsu"`) + `.mutagen/state/**` |
 | `karai_state` | `Karai` | `project_state.md` + `infrastructure_state.md` + `slices/**` + `.mutagen/state/**` |
 
 ### Author paths per agent
@@ -223,10 +231,9 @@ before entering the per-slice loop.
    Self-honour these globs. If your work requires a path outside them, stop
    and surface the gap — do not widen scope silently.
 
-   On retry only: the reviewer reports attached below contain Suggested Fix
+   On retry only: Tiger Claw's QA report below contains Suggested Fix
    blocks. Address each fix in order; keep the change minimal — no refactor.
-   Prior reports (by path, do not inline):
-     - reviews/<slice_id>/bishop.md
+   Prior report (by path, do not inline):
      - reviews/<slice_id>/tiger-claw.md
    PROMPT
    )"
@@ -280,7 +287,7 @@ advisory backlog) and reviewer escalations.
    returns `verdict: "fail"` with a tooling finding — treat as any other
    structural fail. A broken check script is not a pass.
 
-### Stage 3 — Bishop ∥ Tiger Claw (parallel review)
+### Stage 3 — Tiger Claw (QA)
 
 **Skip entire stage** if `pipeline_mode == "lightweight"` AND
 `review_required == false`. Record `verdicts.bishop: "skip"` and
@@ -288,48 +295,36 @@ advisory backlog) and reviewer escalations.
 
 Otherwise:
 
-1. Rotate `active-slice.json` to the `review_parallel` manifest.
-   Before dispatch, `mkdir -p reviews/<slice_id>` — Bishop and Tiger Claw
-   each write one file into that directory.
-2. **Dispatch Bishop and Tiger Claw concurrently** via the parallel wrapper.
-   Build the shared prompt once (slice artifacts + Evidence Bundle *path*
-   + author output *path* + advisory scope rules), then:
+1. Rotate `active-slice.json` to the `review_qa` manifest.
+   Before dispatch, `mkdir -p reviews/<slice_id>`.
+2. Dispatch Tiger Claw:
 
    ```bash
-   bash "$MUTAGEN_ROOT/bin/agents-parallel.sh" \
-     Bishop TigerClaw "$(cat review_prompt.md)"
+   bash "$MUTAGEN_ROOT/bin/agent.sh" TigerClaw "$(cat review_prompt.md)"
    ```
 
-   The prompt instructs Bishop to write `reviews/<slice_id>/bishop.md` and
-   Tiger Claw to write `reviews/<slice_id>/tiger-claw.md` + a convenience
-   copy at `.mutagen/state/tiger-claw-latest.md`. Each reviewer reads
+   The prompt tells her to write `reviews/<slice_id>/tiger-claw.md` + a
+   convenience copy at `.mutagen/state/tiger-claw-latest.md`. She reads
    `.mutagen/state/evidence/<slice_id>.md` once — do NOT inline the bundle
    into the prompt.
 3. Record verdicts in `slices/queue.json`:
-   - Bishop: 🟢 Clean → `"clean"`; 🟡 Advisory → `"advisory"`; ⏭ Skip →
-     `"skip"`; 🔴 Block → `"block"`.
+   - `verdicts.bishop: "skip"` — Bishop is disabled, always.
    - Tiger Claw: 🟢 Clean → `"clean"`; 🟡 Gap → `"gap"`; ⏭ Skip → `"skip"`;
      🔴 Defect → `"defect"`.
-4. **Confirm both reports are persisted**:
-   - Bishop: `reviews/<slice_id>/bishop.md`.
-   - Tiger Claw: `reviews/<slice_id>/tiger-claw.md` (per-slice audit trail)
-     + `.mutagen/state/tiger-claw-latest.md` (convenience pointer the retry
-     loop can read without knowing the slice ID; clobber-on-write).
-   If either file is missing, the reviewer did not follow protocol — treat
-   as a non-conformant return, escalate. Do not fabricate the file.
+4. **Confirm the QA report is persisted**:
+   `reviews/<slice_id>/tiger-claw.md` + `.mutagen/state/tiger-claw-latest.md`
+   (clobber-on-write). If missing, treat as non-conformant and escalate.
+   Do not fabricate the file.
 5. Evaluate:
-   - Both non-🔴 → continue to Stage 4.
-   - Either 🔴 → enter the re-review retry loop.
+   - Non-🔴 → continue to Stage 4.
+   - 🔴 Defect → enter the re-review retry loop.
 
 ### Stage 4 — Karai state verification + dispatch log
 
 1. Rotate `active-slice.json` to the `karai_state` manifest.
-2. Re-spawn Karai for Verify-state. Append a Dispatch Log row with final
-   verdicts. Karai also appends each of Bishop's 🟡 advisories from
-   `reviews/<slice_id>/bishop.md` to `.mutagen/state/advisory-backlog.jsonl`
-   (one JSON object per line — see `agents/Karai.md` § Dispatch Protocol
-   step 6). The backlog is consumed by `$mutagen-consolidate-advisories`;
-   Karai never dequeues, only appends.
+2. Re-spawn Karai for Verify-state. Append a Dispatch Log row with the
+   final Tiger Claw verdict. Advisory-backlog append (Bishop's old job) is
+   skipped while Bishop is disabled.
 3. Record completion: `status: "completed"`, `completed_at: <ISO-8601 UTC>`.
 
 ### Stage 5 — Record, offload, advance
@@ -349,7 +344,7 @@ Otherwise:
 
    ## Verdicts
    - Karai structural: pass
-   - Bishop: <clean|advisory|block|skip>
+   - Bishop: skip (disabled)
    - Tiger Claw: <clean|gap|defect|skip>
 
    ## Files touched
@@ -359,16 +354,15 @@ Otherwise:
    <count + one-line per advisory, or "none">
 
    ## Retry path
-   <brief — "first-pass clean", "1 Bishop retry cleared", "micro-correction on attempt 2", etc.>
+   <brief — "first-pass clean", "1 Tiger Claw retry cleared", "micro-correction on attempt 2", etc.>
 
    ## Reports
-   - Review: reviews/<slice_id>/bishop.md
-   - QA:     reviews/<slice_id>/tiger-claw.md
+   - QA: reviews/<slice_id>/tiger-claw.md
    - Evidence: .mutagen/state/evidence/<slice_id>.md
    ```
 
    Once written, the orchestrator must **not** carry per-agent transcripts
-   (author output, Bishop report body, Tiger Claw report body) forward in
+   (author output, Tiger Claw report body) forward in
    its own context. Reference the summary file; re-read on demand.
 
 3. Clear `.mutagen/state/active-slice.json`.
@@ -388,7 +382,7 @@ Otherwise:
    `slices/<slice_id>/summary.md`; do not restate its contents here. The
    marker is exactly one line in this shape and nothing more:
 
-   `✔ <slice_id> — <bishop verdict>/<tiger_claw verdict>, attempts=<N>[, micro_correction][ — heartbeat: <anomaly>]`
+   `✔ <slice_id> — <tiger_claw verdict>, attempts=<N>[, micro_correction][ — heartbeat: <anomaly>]`
 
    Do **not** append "Next slice:", "Proceeding to…", "Ready to
    continue?", file-touched lists, cross-slice findings, or any other
@@ -430,7 +424,7 @@ notifications on:
 
 ## Re-review retry loop
 
-Triggered by Bishop 🔴 Block or Tiger Claw 🔴 Defect (or both) from Stage 3.
+Triggered by Tiger Claw 🔴 Defect from Stage 3.
 
 Two independent budgets govern iteration on a blocked slice:
 
@@ -456,10 +450,8 @@ on attempt 1.
    **Hatch availability:** `micro_corrections_used < max_micro_corrections`.
    If the budget is spent, skip to step 3.
 
-   **Hatch conditions** — all four must hold:
+   **Hatch conditions** — all must hold:
 
-   - **Convergence.** Either only one reviewer fired, or both blocked on
-     the same defect — same file(s), same root cause when stated in prose.
    - **Mechanical scope.** ≲ 20 LOC, confined to tests, wiring, imports,
      renames, stale comments. No new behavior, no contract change.
    - **Named fix.** You can state the exact file(s), change, and point at
@@ -484,10 +476,10 @@ on attempt 1.
       the rule *"change only what is named here — no refactor, no
       tangential cleanup, no scope expansion."*
    4. On return, run Stage 2 (structural check script) normally, then
-      Stage 3 (Bishop ∥ Tiger Claw) one more time.
-   5. If both reviewers return non-🔴 → normal Stage 4 completion. Record
+      Stage 3 (Tiger Claw) one more time.
+   5. If Tiger Claw returns non-🔴 → normal Stage 4 completion. Record
       `verdicts.micro_correction: true` for telemetry. Auto-advance.
-   6. If anything blocks again → return to the top of this retry loop
+   6. If she blocks again → return to the top of this retry loop
       (step 1). The next entry will find `micro_corrections_used`
       exhausted and skip the hatch, falling through to the standard
       retry branch or escalation based on `attempts`.
@@ -499,13 +491,11 @@ on attempt 1.
      **escalate** (step 4).
    - Otherwise, retry is allowed:
      - Mark `status: "blocked_retry"`. Re-render.
-     - Confirm triggering reports are persisted
-       (`reviews/<slice_id>/bishop.md`, `reviews/<slice_id>/tiger-claw.md`,
-       `.mutagen/state/tiger-claw-latest.md`).
+     - Confirm the triggering QA report is persisted
+       (`reviews/<slice_id>/tiger-claw.md` + `.mutagen/state/tiger-claw-latest.md`).
      - Loop back to **Stage 1**. The author is re-dispatched with every
-       Suggested Fix from every reviewer that blocked (only the ones that
-       fired). After Stage 1 returns, proceed through Stage 2, then Stage
-       3 re-runs Bishop and Tiger Claw fresh and in parallel.
+       Suggested Fix from Tiger Claw's report. After Stage 1 returns,
+       proceed through Stage 2, then Stage 3 re-runs Tiger Claw fresh.
      - `attempts` is bumped in Stage 1 (not here). `adjacent_scope_allowed`
        merges into the manifest because `attempts >= 1` on any retry.
 
@@ -513,9 +503,8 @@ on attempt 1.
    retry budget is exhausted, or when a micro-correction returned a fresh
    block AND both budgets are now spent:
 
-   - Mark `status: "escalated"`, `escalation_reason: "Bishop Block / Tiger
-     Claw Defect after N attempts (micro_corrections_used: M)"`. Leave
-     verdicts recorded.
+   - Mark `status: "escalated"`, `escalation_reason: "Tiger Claw Defect
+     after N attempts (micro_corrections_used: M)"`. Leave verdicts recorded.
    - Re-render `slices/queue.md`.
    - Do not clear `active-slice.json`.
    - Fire:
@@ -523,14 +512,13 @@ on attempt 1.
      ```bash
      bash "$MUTAGEN_ROOT/scripts/notify.sh" escalation \
        "mutagen — halted at {slice_id}" \
-       "{slice_id} ({title}) escalated after {N} attempts ({M} micro-corrections). Blocked by: {reviewer(s)}. Needs human input."
+       "{slice_id} ({title}) escalated after {N} attempts ({M} micro-corrections). Blocked by: Tiger Claw. Needs human input."
      ```
 
-   - Stop auto-advance. Present blocking reports verbatim.
+   - Stop auto-advance. Present Tiger Claw's QA report verbatim.
    - Wait for user instruction.
 
-Bishop and Tiger Claw re-run fresh on each retry. A prior Block cleared on
-retry becomes a new 🟢 Clean (or 🟡 Advisory, etc.) in `verdicts.bishop`.
+Tiger Claw re-runs fresh on each retry.
 
 ---
 
@@ -548,7 +536,7 @@ retry becomes a new 🟢 Clean (or 🟡 Advisory, etc.) in `verdicts.bishop`.
 - In Codex the manifest is advisory. Reviewers are the backstop.
 - Every gate's verdict is recorded in `slices/queue.json` under `verdicts.*`
   and in Karai's Dispatch Log.
-- In lightweight mode, the slice's `review_required` tag is authoritative.
+- In lightweight mode, the slice's `review_required` tag is authoritative — do not skip Tiger Claw based on your own judgment.
 - The retry loop is author-only. Structural failures go straight to the
   human.
 - `attempts` and `micro_corrections_used` persist across invocations on the
