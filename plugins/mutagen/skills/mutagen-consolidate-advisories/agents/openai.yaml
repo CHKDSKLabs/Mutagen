@@ -1,0 +1,6 @@
+interface:
+  display_name: "mutagen — consolidate-advisories"
+  short_description: "Turn the Bishop advisory backlog into a cleanup slice by dispatching Shredder against .mutagen/state/advisory-backlog.jsonl"
+  brand_color: "#8B1A1A"
+  default_prompt: "Run $mutagen-consolidate-advisories to promote accumulated Bishop advisories into plannable work."
+allow_implicit_invocation: false
