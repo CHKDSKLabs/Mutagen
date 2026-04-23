@@ -1,5 +1,7 @@
+pub mod activation;
 pub mod adapter;
 pub mod amend_scope;
+pub mod cohort;
 pub mod config;
 pub mod dispatch;
 pub mod evidence;
@@ -12,7 +14,9 @@ pub mod review;
 pub mod review_record;
 pub mod runtime;
 pub mod scope_violation;
+pub mod selected_slice;
 pub mod state;
 pub mod state_transition;
+pub mod state_update;
 pub mod structural;
 pub mod validation;

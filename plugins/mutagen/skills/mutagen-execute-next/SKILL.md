@@ -46,6 +46,33 @@ checking in with the human. Specifically:
 If you catch yourself about to ask the human whether to continue,
 you're wrong. Continue.
 
+## Serial fast path
+
+On the default serial path, prefer one shell entrypoint:
+
+```bash
+bash "$MUTAGEN_ROOT/scripts/run_execute_next.sh" --host codex
+```
+
+That runner owns the full serial queue path: it loops the one-slice runner
+until the queue clears, stalls, or a slice escalates. Treat its JSON payload
+as authoritative for:
+
+- `status: "queue_clear"` — stop cleanly. Any slices closed during this
+  invocation are listed in `completion_markers` and `completed_slices`.
+- `status: "stalled"` — stop cleanly and surface the returned terminal
+  dependency payload. Any slices already closed in this invocation are still
+  listed in `completion_markers`.
+- `status: "escalated"` — stop auto-advance and surface the stage payload it
+  returned. Any earlier successful slices are still listed in
+  `completion_markers`.
+- Exit `2` with `status: "queue_validation_failed"` — surface the payload
+  verbatim, recommend `$mutagen-slice`, and stop.
+
+`run_slice_once.sh` remains the authoritative one-slice contract and the
+debugging fallback when you need to inspect the inner loop directly. The
+detailed stage sections below are the contract that inner runner implements.
+
 ## Host execution profile
 
 Resolve the host execution profile through
@@ -139,7 +166,7 @@ before entering the per-slice loop.
 
 | Stage | `active_agent(s)` | `allowed_write_globs` |
 |-------|-------------------|------------------------|
-| `author` | author agent | `write_set` from the queue + `project_state.md` + `infrastructure_state.md` + `.mutagen/state/**` (+ `adjacent_scope_allowed` globs on retry) |
+| `author` | author agent | `write_set` from the queue + `.mutagen/state/**` (+ `adjacent_scope_allowed` globs on retry) |
 | `karai_structural` | `Karai` (script-run, no agent spawn) | `.mutagen/state/**` |
 | `review_qa` | `TigerClaw` | `reviews/**` + `tests/qa/**` (+ `tests/qa/security/**` when `author_agent == "Tatsu"`) + `.mutagen/state/**` |
 | `karai_state` | `Karai` | `project_state.md` + `infrastructure_state.md` + `slices/**` + `.mutagen/state/**` |
@@ -205,8 +232,8 @@ advisory backlog) and reviewer escalations.
    The shell entrypoint is a compatibility wrapper; it delegates the real
    Stage 2 logic to the Rust harness `structural-check` runtime, which reads
    the author's output from `.mutagen/state/author-output/<slice_id>.md`,
-   the slice metadata from `slices/queue.json`, the context file
-   (`project_state.md` or `infrastructure_state.md`), and the LOC telemetry
+   validates the emitted `State Update` block directly out of that artifact,
+   reads the slice metadata from `slices/queue.json`, and runs the LOC telemetry
    script. It returns `verdict: "pass"` or `verdict: "fail"`
    deterministically; no prompting involved.
 3. Branch on `.verdict`:
@@ -286,7 +313,8 @@ Otherwise:
    ```
 
    The wrapper delegates to the Rust harness `finalize-slice` runtime. It:
-   verifies the State Update block still exists in `context_to_update`,
+   parses the State Update block from author output, applies it to
+   `context_to_update`, and verifies the marker landed,
    records `status: "completed"` plus `completed_at`, writes
    `slices/<slice_id>/summary.md`, appends `.mutagen/state/dispatch-log.jsonl`,
    clears `.mutagen/state/active-slice.json`, and re-renders the queue

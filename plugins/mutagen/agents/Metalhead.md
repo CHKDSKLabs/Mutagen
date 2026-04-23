@@ -104,7 +104,7 @@ Output exact tests and commands that prove four things:
 
 ### 5. State Management
 
-Append a block to `project_state.md` with the slice's Traces-to citations, the Observability Plan summary (SLIs, SLOs, alerts with runbook links, dashboards), artifacts produced, ISC upholding detail, and cardinality budget status.
+Emit a State Update block for `project_state.md` with the slice's Traces-to citations, the Observability Plan summary (SLIs, SLOs, alerts with runbook links, dashboards), artifacts produced, ISC upholding detail, and cardinality budget status. Do not edit the context file directly; the harness applies this block during state record.
 
 ---
 
@@ -147,7 +147,7 @@ Append a block to `project_state.md` with the slice's Traces-to citations, the O
 - **Alert & dashboard sanity:** *rule linter, dashboard schema check, fire-drill test*
 - **DSD conformance:** *log format, metric naming, header propagation*
 
-#### State Update — append to `project_state.md`
+#### State Update — emit for `project_state.md`
 ```markdown
 ### {Slice ID} — {YYYY-MM-DD}
 **Traces:** PRD [...] · ADR [...] · DDD [...] · ISC [...] · DSD [...]

@@ -10,6 +10,9 @@ use crate::queue::{
     BishopVerdict, KaraiStructuralVerdict, Slice, SliceStatus, SliceVerdicts, TigerClawVerdict,
 };
 use crate::state::{Stage, load_active_slice};
+use crate::state_update::{
+    ParsedStateUpdate, apply_state_update_block, context_contains_state_update, parse_state_update,
+};
 use crate::validation::load_queue_file;
 
 #[derive(Debug, Clone)]
@@ -124,7 +127,6 @@ pub fn finalize_slice(options: FinalizeSliceOptions) -> Result<FinalizeSliceResu
         );
     }
 
-    let state_verified = verify_state_block(&workspace_root, &options.slice_id, &active_state)?;
     let author_output_path = workspace_root
         .join(".mutagen/state/author-output")
         .join(format!("{}.md", options.slice_id));
@@ -134,6 +136,9 @@ pub fn finalize_slice(options: FinalizeSliceOptions) -> Result<FinalizeSliceResu
             display_path(&author_output_path)
         )
     })?;
+    let state_update = parse_state_update(&author_output, &options.slice_id)?;
+    let state_verified =
+        apply_and_verify_state_update(&workspace_root, &active_state, &state_update)?;
     let files_touched = extract_artifact_paths(&author_output);
 
     let now_unix_ms = now_unix_ms()?;
@@ -302,24 +307,19 @@ pub fn finalize_slice(options: FinalizeSliceOptions) -> Result<FinalizeSliceResu
     })
 }
 
-fn verify_state_block(
+fn apply_and_verify_state_update(
     workspace_root: &Path,
-    slice_id: &str,
     active_state: &crate::state::ActiveSliceState,
+    state_update: &ParsedStateUpdate,
 ) -> Result<bool> {
     let context_path =
         resolve_workspace_path(workspace_root, Path::new(&active_state.context_to_update));
-    let context = fs::read_to_string(&context_path).with_context(|| {
-        format!(
-            "failed to read context file at {}",
-            display_path(&context_path)
-        )
-    })?;
 
-    if !context.contains(slice_id) {
+    apply_state_update_block(&context_path, state_update)?;
+    if !context_contains_state_update(&context_path, &state_update.marker)? {
         bail!(
-            "slice_id `{}` not found in {}",
-            slice_id,
+            "state update marker `{}` not found in {}",
+            state_update.marker,
             display_path(&context_path)
         );
     }

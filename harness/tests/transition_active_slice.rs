@@ -40,6 +40,16 @@ fn transition_author_dispatch_bumps_attempts_and_preserves_first_pass_scope() {
             .allowed_write_globs
             .contains(&"tests/orders/**".to_string())
     );
+    assert!(
+        !result
+            .allowed_write_globs
+            .contains(&"project_state.md".to_string())
+    );
+    assert!(
+        !result
+            .allowed_write_globs
+            .contains(&"infrastructure_state.md".to_string())
+    );
 
     let active_state = workspace.read_json(".mutagen/state/active-slice.json");
     assert_eq!(active_state["stage"], "author");
@@ -258,10 +268,18 @@ fn unique_temp_dir(name: &str) -> PathBuf {
         .expect("clock should be after unix epoch")
         .as_nanos();
 
-    env::temp_dir().join(format!(
-        "mutagen-harness-{name}-transition-active-{}-{nanos}",
-        std::process::id()
-    ))
+    for attempt in 0..1024 {
+        let path = env::temp_dir().join(format!(
+            "mutagen-harness-{name}-transition-active-{}-{nanos}-{attempt}",
+            std::process::id()
+        ));
+
+        if fs::create_dir(&path).is_ok() {
+            return path;
+        }
+    }
+
+    panic!("failed to allocate a unique temp dir for {name}");
 }
 
 fn copy_dir_recursive(source: &Path, destination: &Path) -> std::io::Result<()> {

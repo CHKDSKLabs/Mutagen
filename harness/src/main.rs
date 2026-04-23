@@ -2,6 +2,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use mutagen_harness::adapter::{HostKind, adapter_for, resolved_host_profile};
 use mutagen_harness::amend_scope::{AmendScopeOptions, MutationKind, amend_scope};
+use mutagen_harness::cohort::{PrepareCohortOptions, prepare_cohort};
 use mutagen_harness::config::load_workflow_config_file;
 use mutagen_harness::dispatch::{AuthorDispatchKind, PrepareDispatchOptions, prepare_dispatch};
 use mutagen_harness::finalize::{FinalizeSliceOptions, finalize_slice};
@@ -13,8 +14,10 @@ use mutagen_harness::review::{ReviewDecisionOptions, review_decision};
 use mutagen_harness::review_record::{RecordReviewVerdictOptions, record_review_verdict};
 use mutagen_harness::runtime::{PrepareNextOptions, prepare_next};
 use mutagen_harness::scope_violation::{ScopeViolationOptions, scope_violation};
+use mutagen_harness::selected_slice::{PrepareSelectedSliceOptions, prepare_selected_slice};
 use mutagen_harness::state::Stage;
 use mutagen_harness::state_transition::{TransitionActiveSliceOptions, transition_active_slice};
+use mutagen_harness::state_update::{ApplyStateUpdateOptions, apply_state_update_for_slice};
 use mutagen_harness::structural::{StructuralCheckOptions, structural_check};
 use mutagen_harness::validation::validate_queue_file;
 use std::path::PathBuf;
@@ -38,6 +41,34 @@ enum Command {
         workflow_config: PathBuf,
         #[arg(long, default_value = ".mutagen/state/active-slice.json")]
         active_state: PathBuf,
+        #[arg(long, value_enum, default_value_t = HostKind::Stub)]
+        host: HostKind,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    PrepareSelectedSlice {
+        #[arg(long, default_value = ".")]
+        workspace_root: PathBuf,
+        #[arg(long, default_value = "slices/queue.json")]
+        queue: PathBuf,
+        #[arg(long, default_value = ".claude/workflow.json")]
+        workflow_config: PathBuf,
+        #[arg(long, default_value = ".mutagen/state/active-slice.json")]
+        active_state: PathBuf,
+        #[arg(long)]
+        slice_id: String,
+        #[arg(long, value_enum, default_value_t = HostKind::Stub)]
+        host: HostKind,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    PrepareCohort {
+        #[arg(long, default_value = ".")]
+        workspace_root: PathBuf,
+        #[arg(long, default_value = "slices/queue.json")]
+        queue: PathBuf,
+        #[arg(long, default_value = ".claude/workflow.json")]
+        workflow_config: PathBuf,
         #[arg(long, value_enum, default_value_t = HostKind::Stub)]
         host: HostKind,
         #[arg(long)]
@@ -148,6 +179,16 @@ enum Command {
         #[arg(long)]
         completed_at: String,
     },
+    ApplyStateUpdate {
+        #[arg(long, default_value = ".")]
+        workspace_root: PathBuf,
+        #[arg(long, default_value = "slices/queue.json")]
+        queue: PathBuf,
+        #[arg(long)]
+        slice_id: String,
+        #[arg(long)]
+        author_output: Option<PathBuf>,
+    },
     ReviewDecision {
         #[arg(long, default_value = ".")]
         workspace_root: PathBuf,
@@ -221,6 +262,44 @@ fn main() -> Result<()> {
                 queue_path: queue,
                 workflow_config_path: workflow_config,
                 active_state_path: active_state,
+                host,
+                dry_run,
+            })?;
+
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        }
+        Command::PrepareSelectedSlice {
+            workspace_root,
+            queue,
+            workflow_config,
+            active_state,
+            slice_id,
+            host,
+            dry_run,
+        } => {
+            let result = prepare_selected_slice(PrepareSelectedSliceOptions {
+                workspace_root,
+                queue_path: queue,
+                workflow_config_path: workflow_config,
+                active_state_path: active_state,
+                slice_id,
+                host,
+                dry_run,
+            })?;
+
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        }
+        Command::PrepareCohort {
+            workspace_root,
+            queue,
+            workflow_config,
+            host,
+            dry_run,
+        } => {
+            let result = prepare_cohort(PrepareCohortOptions {
+                workspace_root,
+                queue_path: queue,
+                workflow_config_path: workflow_config,
                 host,
                 dry_run,
             })?;
@@ -362,6 +441,21 @@ fn main() -> Result<()> {
                 summary_root,
                 slice_id,
                 completed_at,
+            })?;
+
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        }
+        Command::ApplyStateUpdate {
+            workspace_root,
+            queue,
+            slice_id,
+            author_output,
+        } => {
+            let result = apply_state_update_for_slice(ApplyStateUpdateOptions {
+                workspace_root,
+                queue_path: queue,
+                slice_id,
+                author_output_path: author_output,
             })?;
 
             println!("{}", serde_json::to_string_pretty(&result)?);

@@ -98,7 +98,7 @@ Output exact commands that prove three distinct things:
 
 ### 4. State Management
 
-Append a block to `infrastructure_state.md` (or the designated context file). The block MUST include:
+Emit a State Update block for `infrastructure_state.md` (or the designated context file). Do not edit the context file directly; the harness applies this block during state record. The block MUST include:
 
 - Slice ID.
 - Full Traces-to citations as the slice carried them.
@@ -138,7 +138,7 @@ When you have finished, present output with tyrannical precision. Do not omit se
 - **ISC detection:** *exact command per cited `[ISC-NNN]`*
 - **DSD conformance:** *exact commands*
 
-#### State Update — append to `infrastructure_state.md`
+#### State Update — emit for `infrastructure_state.md`
 ```markdown
 ### {Slice ID} — {YYYY-MM-DD}
 **Traces:** PRD [...] · ADR [...] · DDD [...] · ISC [...] · DSD [...]

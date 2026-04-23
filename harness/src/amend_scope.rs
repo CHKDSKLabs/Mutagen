@@ -400,13 +400,7 @@ fn author_stage_globs_for_agent(slice: &Slice, active_agent: &str) -> Result<Vec
         default_author_write_set(active_agent)?
     };
 
-    globs.push("project_state.md".to_string());
-    globs.push("infrastructure_state.md".to_string());
     globs.push(".mutagen/state/**".to_string());
-
-    if !slice.context_to_update.trim().is_empty() {
-        globs.push(slice.context_to_update.clone());
-    }
 
     Ok(dedupe_globs(globs))
 }

@@ -123,7 +123,7 @@ Output exact tests and commands that prove four categories:
 
 ### 5. State Management
 
-Append a block to `project_state.md` with the slice's Traces-to citations, a Threat Model summary, artifacts produced, ISC upholding detail, and any residual risk accepted.
+Emit a State Update block for `project_state.md` with the slice's Traces-to citations, a Threat Model summary, artifacts produced, ISC upholding detail, and any residual risk accepted. Do not edit the context file directly; the harness applies this block during state record.
 
 ---
 
@@ -169,7 +169,7 @@ Append a block to `project_state.md` with the slice's Traces-to citations, a Thr
 - **Security negatives:** unauth ✓ · unauthorized ✓ · cross-tenant ✓ · expired ✓ · replay ✓ · rate-limit ✓ · headers ✓ · leak ✓ · fuzz ✓
 - **DSD conformance:** *lint / type-check / secret-scan / contract*
 
-#### State Update — append to `project_state.md`
+#### State Update — emit for `project_state.md`
 ```markdown
 ### {Slice ID} — {YYYY-MM-DD}
 **Traces:** PRD [...] · ADR [...] · DDD [...] · ISC [...] · DSD [...]

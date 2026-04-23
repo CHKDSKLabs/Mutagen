@@ -32,12 +32,10 @@ fn finalize_slice_writes_summary_dispatch_log_and_clears_active_state() {
 - Acceptance: cargo test
 #### State Update
 ### L1-orders-001 — 2026-04-22
+**Artifacts:** src/orders/aggregate.rs, tests/orders/aggregate_test.rs
 "#,
     );
-    workspace.write_text(
-        "project_state.md",
-        "### L1-orders-001 — 2026-04-22\nState update landed.\n",
-    );
+    workspace.write_text("project_state.md", "# Project State\n");
     workspace.write_text(
         "reviews/L1-orders-001/tiger-claw.md",
         "## Verdict\n🟢 Clean\n",
@@ -119,6 +117,13 @@ fn finalize_slice_writes_summary_dispatch_log_and_clears_active_state() {
     assert!(summary.contains("- QA: `reviews/L1-orders-001/tiger-claw.md`"));
     assert!(summary.contains("- Evidence: `.mutagen/state/evidence/L1-orders-001.md`"));
 
+    let project_state = workspace.read_text("project_state.md");
+    assert!(project_state.contains("### L1-orders-001 — 2026-04-22"));
+    assert!(
+        project_state
+            .contains("**Artifacts:** src/orders/aggregate.rs, tests/orders/aggregate_test.rs")
+    );
+
     let dispatch_log = workspace.read_text(".mutagen/state/dispatch-log.jsonl");
     let first_line = dispatch_log
         .lines()
@@ -132,7 +137,7 @@ fn finalize_slice_writes_summary_dispatch_log_and_clears_active_state() {
 }
 
 #[test]
-fn finalize_slice_refuses_when_state_update_block_is_missing() {
+fn finalize_slice_refuses_when_state_update_block_is_missing_slice_marker() {
     let workspace = FixtureWorkspace::copy("basic_ready");
     workspace.prepare_claimed_slice();
     workspace.write_author_output(
@@ -147,10 +152,10 @@ fn finalize_slice_refuses_when_state_update_block_is_missing() {
 #### Verification Artifacts
 - Acceptance: cargo test
 #### State Update
-### L1-orders-001 — 2026-04-22
+Completed, probably. Details are elsewhere.
 "#,
     );
-    workspace.write_text("project_state.md", "### unrelated-slice — 2026-04-22\n");
+    workspace.write_text("project_state.md", "# Project State\n");
 
     update_slice(UpdateSliceOptions {
         queue_path: workspace.root.join("slices/queue.json"),
@@ -184,7 +189,7 @@ fn finalize_slice_refuses_when_state_update_block_is_missing() {
     assert!(
         error
             .to_string()
-            .contains("slice_id `L1-orders-001` not found in"),
+            .contains("State Update block must start with a slice marker"),
         "unexpected error: {error:#}"
     );
 
@@ -317,10 +322,18 @@ fn unique_temp_dir(name: &str) -> PathBuf {
         .expect("clock should be after unix epoch")
         .as_nanos();
 
-    env::temp_dir().join(format!(
-        "mutagen-harness-{name}-finalize-slice-{}-{nanos}",
-        std::process::id()
-    ))
+    for attempt in 0..1024 {
+        let path = env::temp_dir().join(format!(
+            "mutagen-harness-{name}-finalize-slice-{}-{nanos}-{attempt}",
+            std::process::id()
+        ));
+
+        if fs::create_dir(&path).is_ok() {
+            return path;
+        }
+    }
+
+    panic!("failed to allocate a unique temp dir for {name}");
 }
 
 fn copy_dir_recursive(source: &Path, destination: &Path) -> std::io::Result<()> {

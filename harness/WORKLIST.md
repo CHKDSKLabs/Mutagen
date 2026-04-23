@@ -19,6 +19,9 @@
 - [x] Implement canonical successful slice closure as code.
 - [x] Implement canonical review verdict recording as code.
 - [x] Implement canonical review-decision and retry branching as code.
+- [x] Implement canonical bounded-cohort selection with write-set conflict detection.
+- [x] Implement canonical targeted slice materialization for isolated workspace execution.
+- [x] Implement worktree-backed bounded cohort execution with deterministic serial import.
 - [x] Implement canonical stop-condition / notification planning for queue clear, retry exhaustion, and layer milestones.
 - [x] Implement canonical structural-fail stop-condition / notification planning.
 - [x] Implement canonical scope-violation artifact normalization and notification planning.

@@ -6,6 +6,7 @@ use std::process::Command;
 
 use crate::notifications::{NotificationEvent, StopCondition, structural_fail_notification};
 use crate::queue::Slice;
+use crate::state_update::parse_state_update;
 use crate::validation::load_queue_file;
 
 #[derive(Debug, Clone)]
@@ -128,33 +129,12 @@ pub fn structural_check(options: StructuralCheckOptions) -> StructuralCheckRepor
         }
     }
 
-    if !slice.context_to_update.trim().is_empty() {
-        let context_path =
-            resolve_path(&options.workspace_root, Path::new(&slice.context_to_update));
-
-        match fs::read_to_string(&context_path) {
-            Ok(context) => {
-                if !context.contains(&options.slice_id) {
-                    findings.push(finding(
-                        "state_block",
-                        StructuralSeverity::Fail,
-                        format!(
-                            "slice_id {} not found in {} — State Update block likely not appended",
-                            options.slice_id,
-                            display_path(&context_path)
-                        ),
-                    ));
-                }
-            }
-            Err(_) => findings.push(finding(
-                "state_block",
-                StructuralSeverity::Fail,
-                format!(
-                    "context_to_update file {} does not exist",
-                    display_path(&context_path)
-                ),
-            )),
-        }
+    if let Err(error) = parse_state_update(&author_output, &options.slice_id) {
+        findings.push(finding(
+            "state_block",
+            StructuralSeverity::Fail,
+            error.to_string(),
+        ));
     }
 
     let loc = collect_loc(&options);

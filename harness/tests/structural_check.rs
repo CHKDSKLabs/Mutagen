@@ -34,10 +34,6 @@ Built the aggregate and tests.
 - L1-orders-001 completed
 ",
     );
-    workspace.write_text(
-        "project_state.md",
-        "# Project State\n\n- L1-orders-001 completed and recorded.\n",
-    );
 
     let report = structural_check(workspace.structural_options("L1-orders-001"));
 
@@ -70,10 +66,6 @@ Built the aggregate and tests.
 - ADR-0001
 - [DSD-001]
 ",
-    );
-    workspace.write_text(
-        "project_state.md",
-        "# Project State\n\n- L1-orders-001 completed and recorded.\n",
     );
 
     let report = structural_check(workspace.structural_options("L1-orders-001"));
@@ -118,10 +110,6 @@ Built the aggregate and tests.
 - L1-orders-001 completed
 ",
     );
-    workspace.write_text(
-        "project_state.md",
-        "# Project State\n\n- L1-orders-001 completed and recorded.\n",
-    );
 
     let report = structural_check(workspace.structural_options("L1-orders-001"));
 
@@ -147,7 +135,7 @@ Built the aggregate and tests.
 }
 
 #[test]
-fn structural_check_fails_when_state_update_is_missing_from_context_file() {
+fn structural_check_fails_when_state_update_block_is_missing_slice_marker() {
     let workspace = FixtureWorkspace::copy("basic_ready");
     workspace.write_text(
         ".mutagen/state/author-output/L1-orders-001.md",
@@ -169,12 +157,8 @@ Built the aggregate and tests.
 - [DSD-001]
 
 ## State Update
-- L1-orders-001 completed
+- completed without naming the slice
 ",
-    );
-    workspace.write_text(
-        "project_state.md",
-        "# Project State\n\n- no slice marker here.\n",
     );
 
     let report = structural_check(workspace.structural_options("L1-orders-001"));
@@ -191,9 +175,7 @@ Built the aggregate and tests.
     assert!(report.findings.iter().any(|finding| {
         finding.check == "state_block"
             && finding.severity == StructuralSeverity::Fail
-            && finding
-                .detail
-                .contains("State Update block likely not appended")
+            && finding.detail.contains("must start with a slice marker")
     }));
 }
 
@@ -222,10 +204,6 @@ Built the aggregate and tests.
 ## State Update
 - L1-orders-001 completed
 ",
-    );
-    workspace.write_text(
-        "project_state.md",
-        "# Project State\n\n- L1-orders-001 completed and recorded.\n",
     );
     workspace.write_text(
         "slice_loc_stub.sh",
@@ -303,10 +281,18 @@ fn unique_temp_dir(name: &str) -> PathBuf {
         .expect("clock should be after unix epoch")
         .as_nanos();
 
-    env::temp_dir().join(format!(
-        "mutagen-harness-{name}-structural-{}-{nanos}",
-        std::process::id()
-    ))
+    for attempt in 0..1024 {
+        let path = env::temp_dir().join(format!(
+            "mutagen-harness-{name}-structural-{}-{nanos}-{attempt}",
+            std::process::id()
+        ));
+
+        if fs::create_dir(&path).is_ok() {
+            return path;
+        }
+    }
+
+    panic!("failed to allocate a unique temp dir for {name}");
 }
 
 fn copy_dir_recursive(source: &Path, destination: &Path) -> std::io::Result<()> {

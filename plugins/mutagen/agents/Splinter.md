@@ -100,7 +100,7 @@ Output exact checks that prove three things:
 
 ### 5. State Management
 
-Append a block to `project_state.md` (application docs) or `infrastructure_state.md` (infra / runbooks ops content) with the slice's Traces-to citations, the Documentation Brief summary, artefacts produced, and the maintenance trigger so the next change to the underlying source knows which doc to reopen.
+Emit a State Update block for `project_state.md` (application docs) or `infrastructure_state.md` (infra / runbooks ops content) with the slice's Traces-to citations, the Documentation Brief summary, artefacts produced, and the maintenance trigger so the next change to the underlying source knows which doc to reopen. Do not edit the context file directly; the harness applies this block during state record.
 
 ---
 
@@ -142,7 +142,7 @@ Append a block to `project_state.md` (application docs) or `infrastructure_state
 - **Referential:** *internal link check, external link check*
 - **Example-runnable:** *exact command or harness used*
 
-#### State Update — append to `project_state.md` (or `infrastructure_state.md` for runbook-ops)
+#### State Update — emit for `project_state.md` (or `infrastructure_state.md` for runbook-ops)
 ```markdown
 ### {Slice ID} — {YYYY-MM-DD}
 **Traces:** PRD [...] · ADR [...] · DDD [...] · ISC [...] · DSD [...]

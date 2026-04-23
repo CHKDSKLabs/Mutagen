@@ -25,7 +25,7 @@ The user has invoked `/mutagen:status`. Gather the current state and report conc
 6. **Queue validation.** Read `.mutagen/state/queue-validation.json` if present. Treat it as the harness verdict on whether `slices/queue.json` is executable. Report:
    - `ok`, `error_count`, `warning_count`.
    - Any issues, summarised with `level`, `code`, `slice_id` when present, and `message`.
-   - Whether the report is stale. If `slices/queue.json` has a newer modified time than `.mutagen/state/queue-validation.json`, flag the validator report as stale rather than suppressing it.
+   - Whether the report is stale. If the report carries `queue_contract_hash` metadata, recompute the current queue-contract hash and compare that instead of file modified times. Runtime-mutated fields such as `status`, `attempts`, `micro_corrections_used`, `verdicts`, `completed_at`, and `escalation_reason` do **not** make the validator stale. Fall back to modified-time comparison only for legacy reports without hash metadata.
    - If `slices/queue.json` is missing but the validator report exists, flag it as orphaned.
 7. **Active slice.** Read `.mutagen/state/active-slice.json` if present. Report the slice ID, current `stage`, `active_agent`, `host`, `attempts`, and any `degraded_capabilities`. If the file exists outside an `/mutagen:execute-next` run, flag it — it means a prior run did not clean up.
 8. **Latest scope violation.** Read `.mutagen/state/scope-violation.json` if present. Report the recorded slice, stage, agent, denied path, and class. Treat it as the canonical artifact for the latest Traag DENY until a newer violation supersedes it.
@@ -114,6 +114,7 @@ Next actions:
 - If any upstream document is missing, recommend `/mutagen:elicit`.
 - If all are Approved but there is no queue, recommend `/mutagen:slice`.
 - If `.mutagen/state/queue-validation.json` is missing, stale, orphaned, or reports `ok: false`, recommend `/mutagen:slice` instead of `/mutagen:execute-next`.
+  "Stale" means the executable queue contract drifted after validation, not that Karai updated runtime bookkeeping fields during a healthy run.
 - If there is a queue with pending slices and the queue validation report is current with `ok: true`, recommend `/mutagen:execute-next`.
 - If there is an open escalation, recommend resolving it before proceeding.
 - If `.mutagen/state/scope-violation.json` exists, surface it even when the queue already shows the slice as escalated — that artifact is the canonical detail payload for the latest Traag DENY.

@@ -47,9 +47,13 @@ action.
    - `ok`, `error_count`, `warning_count`.
    - Any issues, summarised with `level`, `code`, `slice_id` when present,
      and `message`.
-   - Whether the report is stale. If `slices/queue.json` has a newer
-     modified time than `.mutagen/state/queue-validation.json`, flag the
-     validator report as stale rather than suppressing it.
+   - Whether the report is stale. If the report carries
+     `queue_contract_hash` metadata, recompute the current queue-contract
+     hash and compare that instead of file modified times. Runtime-mutated
+     fields such as `status`, `attempts`, `micro_corrections_used`,
+     `verdicts`, `completed_at`, and `escalation_reason` do **not** make
+     the validator stale. Fall back to modified-time comparison only for
+     legacy reports without hash metadata.
    - If `slices/queue.json` is missing but the validator report exists,
      flag it as orphaned.
 7. **Active slice.** Read `.mutagen/state/active-slice.json` if present.
@@ -146,6 +150,8 @@ Next actions:
 - If `.mutagen/state/queue-validation.json` is missing, stale, orphaned, or
   reports `ok: false`, recommend `$mutagen-slice` instead of
   `$mutagen-execute-next`.
+- "Stale" means the executable queue contract drifted after validation, not
+  that Karai updated runtime bookkeeping fields during a healthy run.
 - If a queue has pending slices and the queue validation report is current
   with `ok: true`, recommend `$mutagen-execute-next`.
 - If an escalation is open, recommend resolving before proceeding.

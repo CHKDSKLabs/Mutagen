@@ -365,9 +365,10 @@ fn render_author_prompt(
     body.push("## Required instructions".to_string());
     body.push("- Stay inside the allowed write globs. If you need a path outside them, stop and surface the gap instead of widening scope silently.".to_string());
     body.push(format!(
-        "- Append or refresh the required State Update block in {}.",
+        "- Emit the required State Update block for {}.",
         fallback_text(&slice.context_to_update, "the configured context file")
     ));
+    body.push("- Do not edit the context file directly. The harness applies the State Update block during state_record.".to_string());
     body.push("- Follow the persona's output contract exactly. Keep the execution summary terse and artifact-oriented.".to_string());
 
     if let Some(path) = qa_report_path {

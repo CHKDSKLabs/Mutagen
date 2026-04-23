@@ -634,18 +634,44 @@ queue_validation_path="$ROOT/.mutagen/state/queue-validation.json"
 if [[ -f "$queue_validation_path" ]]; then
   queue_validation_stale=false
   queue_validation_orphaned=false
+  queue_validation_freshness_basis="mtime"
 
   if [[ ! -f "$queue_json_path" ]]; then
     queue_validation_orphaned=true
-  elif [[ "$(mtime_or_zero "$queue_json_path")" -gt "$(mtime_or_zero "$queue_validation_path")" ]]; then
-    queue_validation_stale=true
+  else
+    report_contract_hash="$("$JQ_BIN" -r '.queue_contract_hash // empty' "$queue_validation_path" 2>/dev/null || true)"
+    report_contract_basis="$("$JQ_BIN" -r '.queue_contract_hash_basis // empty' "$queue_validation_path" 2>/dev/null || true)"
+    current_contract_hash=""
+    current_contract_basis=""
+
+    if [[ -n "$report_contract_hash" && -n "$report_contract_basis" ]]; then
+      set +e
+      current_contract_json="$(bash "$SCRIPT_DIR/queue_contract_hash.sh" "$queue_json_path" 2>/dev/null)"
+      current_contract_status=$?
+      set -e
+
+      if [[ $current_contract_status -eq 0 ]] && printf '%s' "$current_contract_json" | "$JQ_BIN" empty >/dev/null 2>&1; then
+        current_contract_hash="$(printf '%s' "$current_contract_json" | "$JQ_BIN" -r '.hash // empty')"
+        current_contract_basis="$(printf '%s' "$current_contract_json" | "$JQ_BIN" -r '.basis // empty')"
+      fi
+    fi
+
+    if [[ -n "$report_contract_hash" && -n "$report_contract_basis" && -n "$current_contract_hash" && -n "$current_contract_basis" ]]; then
+      queue_validation_freshness_basis="$current_contract_basis"
+      if [[ "$report_contract_basis" != "$current_contract_basis" || "$report_contract_hash" != "$current_contract_hash" ]]; then
+        queue_validation_stale=true
+      fi
+    elif [[ "$(mtime_or_zero "$queue_json_path")" -gt "$(mtime_or_zero "$queue_validation_path")" ]]; then
+      queue_validation_stale=true
+    fi
   fi
 
   queue_validation_json="$("$JQ_BIN" -c \
     --arg path ".mutagen/state/queue-validation.json" \
+    --arg freshness_basis "$queue_validation_freshness_basis" \
     --argjson stale "$queue_validation_stale" \
     --argjson orphaned "$queue_validation_orphaned" \
-    '. + {path:$path, stale:$stale, orphaned:$orphaned}' \
+    '. + {path:$path, stale:$stale, orphaned:$orphaned, freshness_basis:$freshness_basis}' \
     "$queue_validation_path" 2>/dev/null)"
 else
   queue_validation_json='null'

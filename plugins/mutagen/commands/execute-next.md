@@ -21,6 +21,33 @@ This command is a loop, not a conversation. Between slices you are **not** check
 
 If you catch yourself about to ask the human whether to continue, you're wrong. Continue.
 
+## Serial fast path
+
+On the default serial path, `/mutagen:execute-next` should prefer one shell entrypoint:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/run_execute_next.sh" --host claude
+```
+
+That runner owns the full serial queue path: it loops the one-slice runner
+until the queue clears, stalls, or a slice escalates. Treat its JSON payload
+as authoritative for:
+
+- `status: "queue_clear"` — stop cleanly. Any slices that closed during this
+  invocation are listed in `completion_markers` and `completed_slices`.
+- `status: "stalled"` — stop cleanly and surface the returned terminal
+  dependency payload. Any slices already closed in this invocation are still
+  listed in `completion_markers`.
+- `status: "escalated"` — stop auto-advance and surface the stage payload it
+  returned. Any earlier successful slices are still listed in
+  `completion_markers`.
+- Exit `2` with `status: "queue_validation_failed"` — surface the payload
+  verbatim, recommend `/mutagen:slice`, and stop.
+
+`run_slice_once.sh` remains the authoritative one-slice contract and the
+debugging fallback when you need to inspect the inner loop directly. The
+detailed stage sections below are the contract that inner runner implements.
+
 ## Session preflight (runs once per `/mutagen:execute-next` invocation)
 
 Read the upstream design bundle into your conversation context **once**, before entering the per-slice loop. This is the cache that lets every subsequent spawn ride on inlined evidence instead of forcing every author / reviewer to cold-load 5–14 docs themselves.
@@ -52,10 +79,18 @@ Read the upstream design bundle into your conversation context **once**, before 
    - Any other exit → tooling failure. Surface the payload verbatim and stop.
    - Then read `.mutagen/state/active-slice.json`. The harness already claimed the slice, resolved `pipeline_mode` / retry budgets, wrote the author-stage manifest, and materialized the Evidence Bundle. Do **not** re-select the slice, re-claim it in `slices/queue.json`, or rebuild `.mutagen/state/evidence/<slice_id>.md` by hand.
    - Every active-slice stage mutation after this point goes through `${CLAUDE_PLUGIN_ROOT}/scripts/transition_active_slice.sh`; do not hand-edit `.mutagen/state/active-slice.json`.
-5. **Manual cohort fallback.** Only if `parallel_dispatch == "bounded_cohort"` and you are intentionally exercising bounded parallel dispatch before the harness grows cohort support, follow the remaining manual steps below.
+5. **Bounded cohort preflight.** If `parallel_dispatch == "bounded_cohort"`, run `${CLAUDE_PLUGIN_ROOT}/scripts/prepare_cohort.sh --host claude`.
+   - Exit `0` with `status: "ready"` → continue into the bounded-parallel dispatch section below. Treat the JSON payload as authoritative for `cohort_layer`, `effective_max_parallel_slices`, the selected `cohort[]`, each slice's `selection_scope`, `write_set`, `adjacent_scope_allowed`, `depends_on`, and `evidence_bundle_path`, plus any `deferred[]` reasons for ready siblings that were skipped.
+   - Exit `0` with `status: "queue_clear"` → report queue clear and stop.
+   - Exit `0` with `status: "stalled"` → report the `blocked` dependency list verbatim and stop.
+   - Exit `0` with `status: "serial_only"` → surface the host profile and fall back to the serial path instead of improvising cohort mode.
+   - Exit `2` → refuse execution. Surface the JSON payload verbatim, recommend re-running `/mutagen:slice`, and stop. This covers missing, stale, orphaned, or failed queue-validator state.
+   - Any other exit → tooling failure. Surface the payload verbatim and stop.
+   - The harness-prepared cohort already resolved safe sibling slices and wrote their evidence bundles. Do **not** re-scan `slices/queue.json` by hand to rebuild the cohort or re-materialize `.mutagen/state/evidence/<slice_id>.md` for selected siblings.
+6. **Manual fallback.** Only if you are debugging `prepare_cohort.sh` or extending the runtime and the harness cohort entrypoint is unavailable, follow the remaining manual steps below.
    Every queue mutation in the remaining manual path must go through `${CLAUDE_PLUGIN_ROOT}/scripts/update_queue_slice.sh`; do not hand-edit `slices/queue.json`.
-6. Read `slices/queue.json` (canonical — see [`guides/queue-schema.md`](../guides/queue-schema.md)). If the JSON is missing but `slices/slicemap.md` or legacy `slices/queue.md` exists, refuse and tell the user to re-run `/mutagen:slice` — Karai drives from the JSON, not the prose rendering. Find the first **ready** slice whose status is `pending` or `blocked_retry`. A slice is ready iff every ID in its `depends_on` array (if any) has `status == "completed"` in the queue. Slices with unmet dependencies are skipped — never run them out of order just because an earlier one is blocked. If nothing is ready (queue has no pending / blocked_retry, *or* every remaining pending slice has an unmet dep), report "queue clear — nothing left to dispatch" (or "queue stalled — dependencies unmet: <list>" if the latter) and stop.
-7. Extract from the chosen slice (straight from the JSON):
+7. Read `slices/queue.json` (canonical — see [`guides/queue-schema.md`](../guides/queue-schema.md)). If the JSON is missing but `slices/slicemap.md` or legacy `slices/queue.md` exists, refuse and tell the user to re-run `/mutagen:slice` — Karai drives from the JSON, not the prose rendering. Find the first **ready** slice whose status is `pending` or `blocked_retry`. A slice is ready iff every ID in its `depends_on` array (if any) has `status == "completed"` in the queue. Slices with unmet dependencies are skipped — never run them out of order just because an earlier one is blocked. If nothing is ready (queue has no pending / blocked_retry, *or* every remaining pending slice has an unmet dep), report "queue clear — nothing left to dispatch" (or "queue stalled — dependencies unmet: <list>" if the latter) and stop.
+8. Extract from the chosen slice (straight from the JSON):
    - `slice_id`, `author_agent`, `layer`, `bounded_context`, `title`, `objective`
    - `traces_to` (PRD / ADR / DDD / ISC / DSD citations)
    - `review_required` (lightweight mode only)
@@ -64,7 +99,7 @@ Read the upstream design bundle into your conversation context **once**, before 
    - `write_set` (authoritative write scope for author-stage scheduling and manifests)
    - `adjacent_scope_allowed` (optional array of globs; may be absent / empty on slices where Shredder did not anticipate cross-cutting work)
    - `depends_on` (optional array of slice IDs; used by the DAG readiness check in preflight step 5)
-8. **Build the Evidence Bundle for this slice and write it to disk.** From the slice's `traces_to` block, resolve every citation to a verbatim excerpt out of the bundle docs you cached in Session preflight. Assemble the bundle once, then **write it to `.mutagen/state/evidence/<slice_id>.md`**. Every subsequent spawn in this slice (author, Tiger Claw, and any retry re-spawn) receives the file *path* plus the instruction *"Read this file once; do not re-read upstream docs."* — not the inlined text. This keeps the prompt small, cache-friendly across retries, and guarantees every agent sees byte-identical evidence. If the file already exists from a prior attempt on the same slice, overwrite it — the citation set is a function of the slice, not the attempt.
+9. **Build the Evidence Bundle for this slice and write it to disk.** From the slice's `traces_to` block, resolve every citation to a verbatim excerpt out of the bundle docs you cached in Session preflight. Assemble the bundle once, then **write it to `.mutagen/state/evidence/<slice_id>.md`**. Every subsequent spawn in this slice (author, Tiger Claw, and any retry re-spawn) receives the file *path* plus the instruction *"Read this file once; do not re-read upstream docs."* — not the inlined text. This keeps the prompt small, cache-friendly across retries, and guarantees every agent sees byte-identical evidence. If the file already exists from a prior attempt on the same slice, overwrite it — the citation set is a function of the slice, not the attempt.
 
    Citation forms to handle:
    - `[FR-NNN]` / `[NFR-NNN]` → grep PRD for the bracketed ID; include the line plus the parent bullet/section header (typically 2–10 lines)
@@ -96,7 +131,7 @@ Read the upstream design bundle into your conversation context **once**, before 
 
    If a citation cannot be resolved (ID not found in the cited doc), halt and escalate — the slice queue is referencing evidence that doesn't exist, which is a Shredder bug, not something to paper over.
 
-8. Initialise the active-slice state file with the **author** stage's scope. Per-stage rotation rewrites this file at each stage transition so the PreToolUse guard only grants the exact paths a given agent needs:
+10. Initialise the active-slice state file with the **author** stage's scope. Per-stage rotation rewrites this file at each stage transition so the PreToolUse guard only grants the exact paths a given agent needs:
 
    ```json
    {
@@ -117,7 +152,7 @@ Read the upstream design bundle into your conversation context **once**, before 
    **Adjacent-scope merge (retry only).** On first dispatch (`attempts == 0` before the Stage 1 bump), `allowed_write_globs` is strictly the slice `write_set` plus the state paths. If the queue came from an older slicer and `write_set` is absent, fall back to the legacy author-path table below. On any retry dispatch (`attempts >= 1` before Stage 1 bumps it further), if the slice carries a non-empty `adjacent_scope_allowed`, append those globs to `allowed_write_globs`. Shredder anticipated these cross-cutting files; the retry loop gets to use them without the human having to hand-edit the manifest. Micro-correction dispatches count as retries for this rule.
 
    For the review stage the `active_agent` field is `"TigerClaw"`.
-9. Mark the slice `in_progress` through `${CLAUDE_PLUGIN_ROOT}/scripts/update_queue_slice.sh --slice-id <slice_id> --status in_progress`. The wrapper writes the canonical queue through the harness and refreshes `slices/slicemap.md` plus the legacy `slices/queue.md` shadow.
+11. Mark the slice `in_progress` through `${CLAUDE_PLUGIN_ROOT}/scripts/update_queue_slice.sh --slice-id <slice_id> --status in_progress`. The wrapper writes the canonical queue through the harness and refreshes `slices/slicemap.md` plus the legacy `slices/queue.md` shadow.
 
 ## Per-stage scope manifests
 
@@ -125,7 +160,7 @@ The guard (`scripts/guard.sh`) reads `allowed_write_globs` on every Write / Edit
 
 | Stage | `active_agent(s)` | `allowed_write_globs` |
 |-------|-------------------|------------------------|
-| `author` | author agent | `write_set` from the queue + `project_state.md` + `infrastructure_state.md` + `.mutagen/state/**` |
+| `author` | author agent | `write_set` from the queue + `.mutagen/state/**` |
 | `karai_structural` | `Karai` | `.mutagen/state/**` (Karai emits a report; she does not write to project files at this stage) |
 | `review_qa` | `TigerClaw` | `reviews/**` + `tests/qa/**` (+ `tests/qa/security/**` when `author_agent == "Tatsu"`) + `.mutagen/state/**` |
 | `karai_state` | `Karai` | `project_state.md` + `infrastructure_state.md` + `slices/**` + `.mutagen/state/**` |
@@ -152,14 +187,14 @@ When the host execution profile reports `parallel_dispatch == "bounded_cohort"`,
 
 ### Readiness cohort
 
-In the manual cohort fallback, after identifying the first ready slice, keep walking the queue: collect up to `effective_max_parallel_slices` ready slices that satisfy **all** of the following:
+`prepare_cohort.sh` is now the canonical readiness selector for bounded parallel mode. It chooses the first ready slice in queue order as the anchor, then walks forward to collect up to `effective_max_parallel_slices` safe siblings. The runtime enforces these constraints:
 
 - Every slice in the cohort has `status` in {`pending`, `blocked_retry`} and all `depends_on` IDs are `completed`.
 - No two slices in the cohort share a `write_set` glob after union. If a legacy queue lacks `write_set`, derive the scope from the fallback author-path table. Parallel authors writing the same paths is a collision guarantee — the guard hook would deny it anyway, but catching it here avoids wasted dispatches. Disjoint contexts pass trivially; overlapping ones do not.
 - No slice in the cohort depends on another slice in the cohort. They must be true siblings in the DAG.
 - Every slice in the cohort is in the same `layer`. Cross-layer parallelism is disallowed — a lower layer is always a potential upstream for a higher layer, and Shredder's ordering is authoritative.
 
-If fewer than `effective_max_parallel_slices` slices satisfy the constraints, run whatever subset is ready — do not wait for more slices to free up. Cohorts of 1 are fine; they behave identically to serial mode.
+If fewer than `effective_max_parallel_slices` slices satisfy the constraints, the runtime returns whatever safe subset is ready and records `deferred[]` reasons for the siblings it skipped. Cohorts of 1 are fine; they behave identically to serial mode.
 
 ### Per-slice worktree isolation
 
@@ -206,7 +241,7 @@ Run stages 1 → 4 in order. The retry loop below wraps stages 1 + 3 (author + p
 Karai the agent is **not** dispatched here. Section-presence, trace-ID matching, state-block landing, and LOC-vs-target are pattern-matching checks; a script runs them without burning an agent spawn per slice per attempt. Karai only wakes for Stage 4 (state verify + dispatch log + advisory backlog) and reviewer escalations.
 
 1. Rotate active-slice.json through `${CLAUDE_PLUGIN_ROOT}/scripts/transition_active_slice.sh --slice-id <slice_id> --stage structural-check`. Karai still *owns* this stage for scope purposes even though the check runs as a script — the manifest is `.mutagen/state/**` writes only.
-2. Run `bash ${CLAUDE_PLUGIN_ROOT}/scripts/karai_structural_check.sh <slice_id>` and capture stdout as a single JSON object. The shell entrypoint is now a compatibility wrapper; it delegates the actual Stage 2 logic to the Rust harness `structural-check` runtime, which reads the author's output from `.mutagen/state/author-output/<slice_id>.md`, the slice metadata from `slices/queue.json`, the context file (`project_state.md` or `infrastructure_state.md`), and the LOC telemetry script. It returns `verdict: "pass"` or `verdict: "fail"` deterministically plus any `findings`, LOC telemetry, and canonical halt metadata (`stop_condition`, `notifications`); no prompting involved.
+2. Run `bash ${CLAUDE_PLUGIN_ROOT}/scripts/karai_structural_check.sh <slice_id>` and capture stdout as a single JSON object. The shell entrypoint is now a compatibility wrapper; it delegates the actual Stage 2 logic to the Rust harness `structural-check` runtime, which reads the author's output from `.mutagen/state/author-output/<slice_id>.md`, validates the emitted `State Update` block directly out of that artifact, reads the slice metadata from `slices/queue.json`, and runs the LOC telemetry script. It returns `verdict: "pass"` or `verdict: "fail"` deterministically plus any `findings`, LOC telemetry, and canonical halt metadata (`stop_condition`, `notifications`); no prompting involved.
 3. Branch on `.verdict`:
    - **`"pass"`** — record it through `${CLAUDE_PLUGIN_ROOT}/scripts/update_queue_slice.sh --slice-id <slice_id> --karai-structural pass`. Continue to Stage 3.
    - **`"fail"`** — **halt** the pipeline. This is not retryable by the author within this command; it is a structural break that needs the human. Record the halt through `${CLAUDE_PLUGIN_ROOT}/scripts/update_queue_slice.sh --slice-id <slice_id> --status escalated --karai-structural fail --escalation-reason "<concat of findings[].detail>"`. Escalate with the full `findings` array presented to the user verbatim. **Do not** clear active-slice.json. **Do not auto-advance** — stop here and wait for the user. `karai_structural_check.sh` now emits and dispatches the canonical `structural_fail` notification from the harness result before returning.
@@ -243,7 +278,7 @@ Otherwise:
 1. Rotate active-slice.json through `${CLAUDE_PLUGIN_ROOT}/scripts/transition_active_slice.sh --slice-id <slice_id> --stage state-record`.
 2. Run `${CLAUDE_PLUGIN_ROOT}/scripts/finalize_slice.sh --slice-id <slice_id>`.
    - The wrapper delegates to the Rust harness `finalize-slice` runtime.
-   - It deterministically verifies the author's State Update block still exists in `context_to_update`.
+   - It deterministically parses the author's `State Update` block from `.mutagen/state/author-output/<slice_id>.md`, applies it to `context_to_update`, and verifies the marker landed.
    - It records `status: "completed"` plus `completed_at` in `slices/queue.json`.
    - It writes `slices/<slice_id>/summary.md`.
    - It appends a canonical JSONL row to `.mutagen/state/dispatch-log.jsonl`.

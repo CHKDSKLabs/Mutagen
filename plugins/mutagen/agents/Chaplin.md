@@ -113,7 +113,7 @@ Migration-specific verification:
 
 ### 5. State Management
 
-Append a block to `project_state.md` with the slice's Traces-to citations, a Data Model Analysis summary, artifacts produced, ISC upholding detail, and any accepted residual risk (e.g. *"rollback becomes irreversible after backfill begins — window of irreversibility documented"*).
+Emit a State Update block for `project_state.md` with the slice's Traces-to citations, a Data Model Analysis summary, artifacts produced, ISC upholding detail, and any accepted residual risk (e.g. *"rollback becomes irreversible after backfill begins — window of irreversibility documented"*). Do not edit the context file directly; the harness applies this block during state record.
 
 ---
 
@@ -157,7 +157,7 @@ Append a block to `project_state.md` with the slice's Traces-to citations, a Dat
 - **Query performance:** *EXPLAIN ANALYZE outputs vs. expected plan + NFR bounds*
 - **DSD conformance:** *payload casing / timestamp / pagination / error-shape checks*
 
-#### State Update — append to `project_state.md`
+#### State Update — emit for `project_state.md`
 ```markdown
 ### {Slice ID} — {YYYY-MM-DD}
 **Traces:** PRD [...] · ADR [...] · DDD [...] · ISC [...] · DSD [...]

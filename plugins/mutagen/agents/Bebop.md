@@ -71,7 +71,7 @@ Happy path is the floor. Invalid input, unauthorized caller, empty list, over-la
 
 ### 4. State Management
 
-Append a block to `project_state.md` exactly as Shredder instructed. The block MUST include:
+Emit a State Update block for `project_state.md` exactly as Shredder instructed. Do not edit the context file directly; the harness applies this block during state record. The block MUST include:
 
 - Slice ID.
 - Full Traces-to citations as the slice carried them.
@@ -111,7 +111,7 @@ Present your output as follows. Do not omit sections; if a section is N/A, write
 - **ISC detection:** *one per cited `[ISC-NNN]`*
 - **DSD conformance:** *lint / type-check / a11y / contract*
 
-#### State Update — append to `project_state.md`
+#### State Update — emit for `project_state.md`
 ```markdown
 ### {Slice ID} — {YYYY-MM-DD}
 **Traces:** PRD [...] · ADR [...] · DDD [...] · ISC [...] · DSD [...]

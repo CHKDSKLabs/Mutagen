@@ -1,0 +1,8 @@
+{
+  "pipeline_mode": "full",
+  "max_parallel_slices": 3,
+  "review": {
+    "max_retries": 2,
+    "max_micro_corrections": 1
+  }
+}

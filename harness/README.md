@@ -51,6 +51,8 @@ cargo run --manifest-path harness/Cargo.toml -- host-capabilities --host codex
 cargo run --manifest-path harness/Cargo.toml -- host-profile --host codex --workflow-config .claude/workflow.json
 cargo run --manifest-path harness/Cargo.toml -- validate-queue --queue slices/queue.json
 cargo run --manifest-path harness/Cargo.toml -- prepare-next --queue slices/queue.json --dry-run
+cargo run --manifest-path harness/Cargo.toml -- prepare-selected-slice --queue slices/queue.json --slice-id L1-orders-001 --dry-run
+cargo run --manifest-path harness/Cargo.toml -- prepare-cohort --queue slices/queue.json --host claude --dry-run
 cargo run --manifest-path harness/Cargo.toml -- prepare-dispatch --slice-id L1-orders-001
 cargo run --manifest-path harness/Cargo.toml -- record-review-verdict --slice-id L1-orders-001
 cargo run --manifest-path harness/Cargo.toml -- update-slice --slice-id L1-orders-001 --status in_progress --attempts 1
@@ -64,6 +66,28 @@ cargo run --manifest-path harness/Cargo.toml -- finalize-slice --slice-id L1-ord
 `prepare-next` now resolves and validates a slice-scoped evidence bundle before
 claiming the next slice. On non-dry runs it writes the bundle to
 `.mutagen/state/evidence/<slice_id>.md`.
+
+`prepare-selected-slice` materializes a specific slice by ID instead of picking
+the next queue head. It writes `active-slice.json` plus the evidence bundle for
+that exact slice, returns a machine-readable `blocked` result when dependencies
+or status make the request invalid, and is the runtime seam the future
+worktree-backed cohort runner will stand on.
+
+`prepare-cohort` is the canonical bounded-parallel preflight. On hosts whose
+execution profile resolves to `bounded_cohort`, it selects the first safe
+same-layer sibling set in queue order, reports deferred ready slices with
+machine-readable reasons such as `layer_mismatch`, `write_set_conflict`, or
+`cohort_limit_reached`, and writes evidence
+bundles for the selected cohort on non-dry runs.
+
+The plugin shell layer now has a real cohort executor at
+`plugins/mutagen/scripts/run_cohort_once.sh`. It fans selected siblings out
+into isolated git worktrees, runs the one-slice pipeline inside each
+workspace, then imports accepted outputs back into the main tree in queue
+order. State updates are now emitted as author-output artifacts and applied
+back into the main workspace in queue order, so same-context siblings no
+longer get serialized just for sharing `project_state.md` or
+`infrastructure_state.md`.
 
 `prepare-dispatch` is the canonical stage-prompt builder for `author` and
 `review`. It reads the active slice plus queue metadata, writes the prompt
@@ -97,7 +121,8 @@ blocked retry vs. escalation, and persists queue state when the decision
 changes it.
 
 `finalize-slice` is the canonical successful-closeout path. It verifies the
-state update, records completion in the queue, writes the slice summary,
+state update artifact, applies it to the target context file, records
+completion in the queue, writes the slice summary,
 appends the dispatch log, and clears `active-slice.json`.
 
 The harness now also emits canonical notification intents for queue-clear,

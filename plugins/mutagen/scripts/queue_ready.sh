@@ -59,6 +59,8 @@ JQ_BIN="$(resolve_jq)" || {
   exit 1
 }
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 if [[ "$QUEUE_PATH" != /* ]]; then
   QUEUE_PATH="$(pwd)/$QUEUE_PATH"
 fi
@@ -114,13 +116,6 @@ fi
 queue_mtime="$(stat -c %Y "$QUEUE_PATH" 2>/dev/null || echo 0)"
 queue_validation_mtime="$(stat -c %Y "$QUEUE_VALIDATION_PATH" 2>/dev/null || echo 0)"
 
-if [[ "$queue_mtime" -gt "$queue_validation_mtime" ]]; then
-  emit_failure \
-    "queue_validation_stale" \
-    "Queue validation report is stale. slices/queue.json changed after validation. Re-run /mutagen:slice before /mutagen:execute-next." \
-    2
-fi
-
 if ! "$JQ_BIN" empty "$QUEUE_VALIDATION_PATH" >/dev/null 2>&1; then
   emit_failure \
     "queue_validation_malformed" \
@@ -135,6 +130,37 @@ report_ok="$("$JQ_BIN" -r '
     ""
   end
 ' "$QUEUE_VALIDATION_PATH" 2>/dev/null || true)"
+
+report_contract_hash="$("$JQ_BIN" -r '.queue_contract_hash // empty' "$QUEUE_VALIDATION_PATH" 2>/dev/null || true)"
+report_contract_basis="$("$JQ_BIN" -r '.queue_contract_hash_basis // empty' "$QUEUE_VALIDATION_PATH" 2>/dev/null || true)"
+current_contract_hash=""
+current_contract_basis=""
+
+if [[ -n "$report_contract_hash" && -n "$report_contract_basis" ]]; then
+  set +e
+  current_contract_json="$(bash "$SCRIPT_DIR/queue_contract_hash.sh" "$QUEUE_PATH" 2>/dev/null)"
+  current_contract_status=$?
+  set -e
+
+  if [[ $current_contract_status -eq 0 ]] && printf '%s' "$current_contract_json" | "$JQ_BIN" empty >/dev/null 2>&1; then
+    current_contract_hash="$(printf '%s' "$current_contract_json" | "$JQ_BIN" -r '.hash // empty')"
+    current_contract_basis="$(printf '%s' "$current_contract_json" | "$JQ_BIN" -r '.basis // empty')"
+  fi
+fi
+
+if [[ -n "$report_contract_hash" && -n "$report_contract_basis" && -n "$current_contract_hash" && -n "$current_contract_basis" ]]; then
+  if [[ "$report_contract_basis" != "$current_contract_basis" || "$report_contract_hash" != "$current_contract_hash" ]]; then
+    emit_failure \
+      "queue_validation_stale" \
+      "Queue validation report is stale. The queue execution contract changed after validation. Re-run /mutagen:slice before /mutagen:execute-next." \
+      2
+  fi
+elif [[ "$queue_mtime" -gt "$queue_validation_mtime" ]]; then
+  emit_failure \
+    "queue_validation_stale" \
+    "Queue validation report is stale. slices/queue.json changed after validation and no contract-hash comparison was available. Re-run /mutagen:slice before /mutagen:execute-next." \
+    2
+fi
 
 if [[ "$report_ok" != "true" ]]; then
   issues_json="$("$JQ_BIN" -c '.issues // []' "$QUEUE_VALIDATION_PATH" 2>/dev/null || echo '[]')"

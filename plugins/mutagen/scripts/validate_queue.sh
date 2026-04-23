@@ -84,6 +84,35 @@ if [[ "$QUEUE_PATH" != /* ]]; then
   QUEUE_PATH="$(pwd)/$QUEUE_PATH"
 fi
 
+QUEUE_CONTRACT_HASH_JSON=""
+set +e
+queue_contract_hash_output="$(bash "$SCRIPT_DIR/queue_contract_hash.sh" "$QUEUE_PATH" 2>/dev/null)"
+queue_contract_hash_status=$?
+set -e
+
+if [[ $queue_contract_hash_status -eq 0 ]] && printf '%s' "$queue_contract_hash_output" | "$JQ_BIN" empty >/dev/null 2>&1; then
+  QUEUE_CONTRACT_HASH_JSON="$queue_contract_hash_output"
+fi
+
+augment_report() {
+  local report_json="$1"
+
+  if [[ -z "$QUEUE_CONTRACT_HASH_JSON" ]]; then
+    printf '%s\n' "$report_json"
+    return 0
+  fi
+
+  printf '%s' "$report_json" | "$JQ_BIN" -c \
+    --arg queue "$QUEUE_PATH" \
+    --argjson queue_contract "$QUEUE_CONTRACT_HASH_JSON" \
+    '. + {
+      queue: $queue,
+      queue_contract_hash: ($queue_contract.hash // null),
+      queue_contract_hash_basis: ($queue_contract.basis // null),
+      queue_contract_hash_algorithm: ($queue_contract.algorithm // null)
+    }'
+}
+
 set +e
 VALIDATOR_OUTPUT="$(
   "$CARGO_BIN" run --quiet --manifest-path "$MANIFEST_PATH" -- validate-queue --queue "$QUEUE_PATH" 2>&1
@@ -114,12 +143,12 @@ REPORT_OK="$(
 )"
 
 if [[ "$REPORT_OK" == "true" ]]; then
-  printf '%s\n' "$VALIDATOR_OUTPUT"
+  augment_report "$VALIDATOR_OUTPUT"
   exit 0
 fi
 
 if [[ "$REPORT_OK" == "false" ]]; then
-  printf '%s\n' "$VALIDATOR_OUTPUT"
+  augment_report "$VALIDATOR_OUTPUT"
   exit 2
 fi
 

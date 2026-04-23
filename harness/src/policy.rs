@@ -14,13 +14,7 @@ pub fn author_stage_write_globs(slice: &Slice) -> Result<Vec<String>> {
         globs.extend(slice.adjacent_scope_allowed.clone());
     }
 
-    globs.push("project_state.md".to_string());
-    globs.push("infrastructure_state.md".to_string());
     globs.push(".mutagen/state/**".to_string());
-
-    if !slice.context_to_update.trim().is_empty() {
-        globs.push(slice.context_to_update.clone());
-    }
 
     Ok(dedupe_globs(globs))
 }

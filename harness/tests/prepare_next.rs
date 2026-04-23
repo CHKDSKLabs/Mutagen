@@ -255,10 +255,18 @@ fn unique_temp_dir(name: &str) -> PathBuf {
         .expect("clock should be after unix epoch")
         .as_nanos();
 
-    env::temp_dir().join(format!(
-        "mutagen-harness-{name}-{}-{nanos}",
-        std::process::id()
-    ))
+    for attempt in 0..1024 {
+        let path = env::temp_dir().join(format!(
+            "mutagen-harness-{name}-{}-{nanos}-{attempt}",
+            std::process::id()
+        ));
+
+        if fs::create_dir(&path).is_ok() {
+            return path;
+        }
+    }
+
+    panic!("failed to allocate a unique temp dir for {name}");
 }
 
 fn copy_dir_recursive(source: &Path, destination: &Path) -> std::io::Result<()> {

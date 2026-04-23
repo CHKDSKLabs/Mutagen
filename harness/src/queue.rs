@@ -212,13 +212,6 @@ pub enum NextSliceSelection {
 
 impl SliceQueue {
     pub fn select_next_ready_slice(&self) -> NextSliceSelection {
-        let completed: HashSet<&str> = self
-            .slices
-            .iter()
-            .filter(|slice| slice.status == SliceStatus::Completed)
-            .map(|slice| slice.id.as_str())
-            .collect();
-
         let mut blocked = Vec::new();
 
         for (index, slice) in self.slices.iter().enumerate() {
@@ -226,13 +219,7 @@ impl SliceQueue {
                 continue;
             }
 
-            let unmet_dependencies: Vec<String> = slice
-                .depends_on
-                .iter()
-                .filter(|dependency| !completed.contains(dependency.as_str()))
-                .cloned()
-                .collect();
-
+            let unmet_dependencies = self.unmet_dependencies_for(slice);
             if unmet_dependencies.is_empty() {
                 return NextSliceSelection::Ready { index };
             }
@@ -254,6 +241,22 @@ impl SliceQueue {
         if let Some(slice) = self.slices.get_mut(index) {
             slice.status = SliceStatus::InProgress;
         }
+    }
+
+    pub fn unmet_dependencies_for(&self, slice: &Slice) -> Vec<String> {
+        let completed: HashSet<&str> = self
+            .slices
+            .iter()
+            .filter(|candidate| candidate.status == SliceStatus::Completed)
+            .map(|candidate| candidate.id.as_str())
+            .collect();
+
+        slice
+            .depends_on
+            .iter()
+            .filter(|dependency| !completed.contains(dependency.as_str()))
+            .cloned()
+            .collect()
     }
 
     pub fn slice_mut(&mut self, slice_id: &str) -> Option<&mut Slice> {
