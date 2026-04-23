@@ -51,6 +51,26 @@ if [[ -z "$FILE_PATH" ]]; then
 fi
 
 CWD="$(printf '%s' "$PAYLOAD" | jq -r '.cwd // empty')"
+
+filesystem_path() {
+  local path="${1:-}"
+
+  if [[ -z "$path" ]]; then
+    printf '.'
+    return 0
+  fi
+
+  if [[ "$path" =~ ^([A-Za-z]):[\\/](.*)$ ]]; then
+    local drive="${BASH_REMATCH[1],,}"
+    local rest="${BASH_REMATCH[2]//\\//}"
+    printf '/mnt/%s/%s' "$drive" "$rest"
+    return 0
+  fi
+
+  printf '%s' "$path"
+}
+
+FS_CWD="$(filesystem_path "$CWD")"
 # Windows hands us C:\foo\bar paths; globs below are forward-slash. Flatten
 # both before the prefix strip or every match silently fails and the slice
 # can't write to its own allowlist.
@@ -73,19 +93,101 @@ match_glob() {
   return 1
 }
 
-STATE_FILE="${CWD:-.}/.mutagen/state/active-slice.json"
+first_matching_glob() {
+  local path="$1"
+  shift
+  local glob
+  for glob in "$@"; do
+    # shellcheck disable=SC2053
+    if [[ "$path" == $glob ]]; then
+      printf '%s' "$glob"
+      return 0
+    fi
+  done
+  return 1
+}
+
+STATE_FILE="${FS_CWD:-.}/.mutagen/state/active-slice.json"
 
 ACTIVE_AGENT=""
+AUTHOR_AGENT=""
+SLICE_ID=""
+SLICE_TITLE=""
+STAGE=""
 declare -a ALLOWED=()
 if [[ -f "$STATE_FILE" ]]; then
   # WinGet's jq 1.8.1 helpfully CRLFs its stdout regardless of input line endings,
   # so every glob ends up stored as "glob\r" and matches exactly nothing. Strip it.
   ACTIVE_AGENT="$(jq -r '.author_agent // empty' "$STATE_FILE" 2>/dev/null | tr -d '\r' || true)"
+  AUTHOR_AGENT="$(jq -r '.author_agent // empty' "$STATE_FILE" 2>/dev/null | tr -d '\r' || true)"
+  ACTIVE_AGENT="$(jq -r '.active_agent // .author_agent // empty' "$STATE_FILE" 2>/dev/null | tr -d '\r' || true)"
+  SLICE_ID="$(jq -r '.slice_id // empty' "$STATE_FILE" 2>/dev/null | tr -d '\r' || true)"
+  SLICE_TITLE="$(jq -r '.title // empty' "$STATE_FILE" 2>/dev/null | tr -d '\r' || true)"
+  STAGE="$(jq -r '.stage // empty' "$STATE_FILE" 2>/dev/null | tr -d '\r' || true)"
   while IFS= read -r glob; do
     glob="${glob%$'\r'}"
     [[ -n "$glob" ]] && ALLOWED+=("$glob")
   done < <(jq -r '.allowed_write_globs[]? // empty' "$STATE_FILE" 2>/dev/null || true)
 fi
+
+persist_scope_violation() {
+  local class="$1"
+  local matched_rule="${2:-}"
+  local reason="$3"
+  local state_dir
+  local allowed_json
+  local ts
+  local body
+
+  state_dir="${FS_CWD:-.}/.mutagen/state"
+  mkdir -p "$state_dir" >/dev/null 2>&1 || return 0
+
+  if [[ ${#ALLOWED[@]} -gt 0 ]]; then
+    allowed_json="$(printf '%s\n' "${ALLOWED[@]}" | jq -R . | jq -s . 2>/dev/null || printf '[]')"
+  else
+    allowed_json='[]'
+  fi
+
+  ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || printf '')"
+  body="$(
+    jq -nc \
+      --argjson allowed_write_globs "$allowed_json" \
+      --arg ts "$ts" \
+      --arg decision "deny" \
+      --arg class "$class" \
+      --arg matched_rule "$matched_rule" \
+      --arg tool_name "$TOOL_NAME" \
+      --arg path "$REL_PATH" \
+      --arg reason "$reason" \
+      --arg message "Traag DENY on $REL_PATH (class: $class) during stage ${STAGE:-unknown}. Agent: ${ACTIVE_AGENT:-unknown}." \
+      --arg slice_id "$SLICE_ID" \
+      --arg title "$SLICE_TITLE" \
+      --arg stage "$STAGE" \
+      --arg active_agent "$ACTIVE_AGENT" \
+      --arg author_agent "$AUTHOR_AGENT" \
+      '{
+        ts: (if $ts == "" then null else $ts end),
+        decision: $decision,
+        class: $class,
+        matched_rule: (if $matched_rule == "" then null else $matched_rule end),
+        tool_name: (if $tool_name == "" then null else $tool_name end),
+        path: $path,
+        reason: $reason,
+        message: $message,
+        slice_id: (if $slice_id == "" then null else $slice_id end),
+        title: (if $title == "" then null else $title end),
+        stage: (if $stage == "" then null else $stage end),
+        active_agent: (if $active_agent == "" then null else $active_agent end),
+        author_agent: (if $author_agent == "" then null else $author_agent end),
+        allowed_write_globs: $allowed_write_globs
+      }' 2>/dev/null
+  )"
+
+  [[ -z "$body" ]] && return 0
+
+  printf '%s\n' "$body" > "$state_dir/scope-violation.json" 2>/dev/null || true
+  printf '%s\n' "$body" >> "$state_dir/scope-violations.jsonl" 2>/dev/null || true
+}
 
 # Universal denylist: design bundle.
 # Exception: April (design-phase elicitor) may edit the bundle when
@@ -122,6 +224,8 @@ if match_glob "$REL_PATH" "${BUNDLE_GLOBS[@]}"; then
     # must be an explicit override. Set CLAUDE_WORKFLOW_META=1 to
     # allow plugin-internal edits to templates/ or guides/.
     if [[ "${CLAUDE_WORKFLOW_META:-0}" != "1" ]]; then
+      matched_rule="$(first_matching_glob "$REL_PATH" "${BUNDLE_GLOBS[@]}" || true)"
+      persist_scope_violation "global" "$matched_rule" "write to upstream design bundle blocked"
       {
         echo "guard.sh: Write to upstream design bundle blocked."
         echo "  path: $REL_PATH"
@@ -139,6 +243,7 @@ fi
 # match its allowlist. Outside a slice, allow.
 if [[ ${#ALLOWED[@]} -gt 0 ]]; then
   if ! match_glob "$REL_PATH" "${ALLOWED[@]}"; then
+    persist_scope_violation "out_of_scope" "" "write outside active slice scope blocked"
     {
       echo "guard.sh: Write outside active slice scope blocked."
       echo "  path:  $REL_PATH"

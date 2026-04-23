@@ -20,7 +20,7 @@ The user has invoked `/mutagen:consolidate-advisories`. Bishop's 🟡 Advisory f
    - The design-bundle documents inlined (same treatment `/mutagen:slice` gives Shredder).
    - The current `slices/queue.json` for reference on ID conventions and ordering.
    - Explicit instruction: *"Cluster these advisories by file path and category. Author a cleanup slice — or a short series, one per coherent cluster — that addresses each cluster with a single minimal change. Every cleanup slice must carry its own Traces-to block — trace each finding back to the originating slice's citations (PRD / ADR / DDD / ISC / DSD). Route each slice to the author agent whose globs cover the touched files; Bebop is the default fallback for cross-cutting test / wiring cleanup. Target LOC ≤ 200 per cleanup slice; refuse to pack a cluster that wouldn't fit and split it instead."*
-   - Instruction on where to write: append to `slices/queue.json` (option (a) above) or author a fresh `slices/cleanup-queue-{YYYY-MM-DD}.json` (option (b)). Re-render `slices/queue.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/render_queue.sh` after mutation.
+   - Instruction on where to write: append to `slices/queue.json` (option (a) above) or author a fresh `slices/cleanup-queue-{YYYY-MM-DD}.json` (option (b)). Re-render `slices/slicemap.md` and refresh legacy `slices/queue.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/render_queue.sh` after mutation.
 
 2. Wait for Shredder to return. Capture the authored slice(s).
 

@@ -6,7 +6,7 @@ description: Invoke Traag to evaluate an in-flight scope-manifest amendment requ
 
 The user has invoked `/mutagen:amend-scope`. Their `$ARGUMENTS` describes a path (or glob) they want added to the currently-active slice's `allowed_write_globs`, the mutation kind (`create` / `modify` / `delete`), and a reason.
 
-This command is the only audited channel for widening an active manifest. It spawns Traag as a subagent, passes him the slice context and the amendment request, and either applies his ALLOW verdict or surfaces his DENY verbatim.
+This command is the only audited channel for widening an active manifest. The harness now owns the actual ALLOW / DENY decision. Traag remains the policy voice in the docs, but the canonical path is a deterministic runtime call that evaluates stage fidelity, agent domain, global deny rules, and justification-gap telemetry without burning a subagent turn.
 
 ## Preflight
 
@@ -14,47 +14,58 @@ This command is the only audited channel for widening an active manifest. It spa
 2. Confirm `slices/queue.json` exists. If not, refuse: no queue, no slice context for Traag to evaluate against.
 3. Read both files. Pull the active slice entry from the queue by matching `slice_id`.
 4. Sanity-check `$ARGUMENTS`:
-   - If empty, refuse: Traag will DENY an empty request anyway; save the round trip.
-   - If no reason is evident in the prose, tell the user Traag requires a justification and stop.
+   - If empty, refuse.
+   - Extract one or more requested paths / globs, the mutation kind (`create` / `modify` / `delete`), and a reason.
+   - If no reason is evident in the prose, tell the user the amendment requires a justification and stop.
+   - If the path list or mutation kind is too ambiguous to extract safely, stop and ask the user for the missing detail instead of free-styling.
 
 ## Dispatch
 
-Spawn the Traag subagent via the Agent tool with:
+Run the harness wrapper:
 
-- `subagent_type`: `Traag`.
-- A prompt that:
-  - States this is a **Mediated Amendment** request (not a hook invocation).
-  - Includes the full `.mutagen/state/active-slice.json` content verbatim.
-  - Includes the matching slice entry from `slices/queue.json` verbatim.
-  - Includes the user's `$ARGUMENTS` as the amendment request.
-  - Asks Traag to apply his Decision Process (including stage fidelity, agent-domain fidelity, global denylist, and slice-citation justification gap) and return either an **ALLOW — amended manifest** block or a **DENY — Violation Report** block per his Output Format.
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/amend_scope.sh" \
+  --requested-glob "<glob-1>" \
+  [--requested-glob "<glob-2>" ...] \
+  --mutation-kind create|modify|delete \
+  --reason "<user reason>"
+```
 
-## After Traag returns
+The wrapper delegates to the Rust harness `amend-scope` runtime. Treat its JSON payload as authoritative for:
+
+- `decision` → `allow` or `deny`
+- `class` / `matched_rule` when denied
+- `rationale`
+- `suggested_next_step`
+- `justification_gap`
+- `added_globs`
+- `allowed_write_globs`
+
+Fallback only when the request is too ambiguous to structure: in that case ask the user for the missing path / mutation kind / reason instead of spawning Traag and hoping he parses the prose better than you do.
+
+## After the runtime returns
 
 ### If ALLOW
 
-1. Parse Traag's amended manifest JSON from his response.
-2. Overwrite `.mutagen/state/active-slice.json` with the amended JSON. Preserve any fields Traag did not touch (e.g. `pipeline_mode`, `review_required`, `max_retries`).
-3. Append a record to `.mutagen/state/amendments.jsonl` (one line per amendment ever granted):
-   ```json
-   {"ts":"YYYY-MM-DDTHH:MM:SSZ","slice":"<slice_id>","stage":"<stage>","agent":"<active_agent>","added":["<glob>"],"reason":"<user's reason>","justification_gap":false}
-   ```
-4. Surface Traag's decision block to the user verbatim.
-5. Tell the user the amendment is live — the next Write / Edit by the active agent inside the expanded scope will be permitted by the guard.
+1. The runtime already rewrote `.mutagen/state/active-slice.json` and appended `.mutagen/state/amendments.jsonl`.
+2. Report the allow decision concisely:
+   - path(s) added
+   - whether `justification_gap` was flagged
+   - that the amendment is live for the **current stage only**
+3. If `added_globs` is empty, say so plainly: the request was allowed but the manifest already contained those globs.
 
 ### If DENY
 
-1. Present Traag's Violation Report to the user verbatim.
-2. **Do not** touch `.mutagen/state/active-slice.json`.
-3. Append a record to `.mutagen/state/amendments.jsonl` marking the denial:
-   ```json
-   {"ts":"...","slice":"...","stage":"...","agent":"...","requested":["<glob>"],"reason":"...","decision":"deny","class":"<class>"}
-   ```
-4. Relay Traag's suggested next step (re-slice, wait for a later stage, escalate to the human).
+1. The runtime already left `.mutagen/state/active-slice.json` untouched and appended a denial record to `.mutagen/state/amendments.jsonl`.
+2. Present the denial using the returned fields:
+   - `class`
+   - `matched_rule` when present
+   - `rationale`
+   - `suggested_next_step`
 
 ## Reminders
 
-- Traag's decision is final. Do not retry, do not reword, do not argue — if the user wants different paths, they change the request and re-invoke.
+- The harness decision is final for the current request. Do not retry, do not reword, do not argue — if the user wants different paths, they change the request and re-invoke.
 - Amendments are **per-slice and per-stage**. When `/mutagen:execute-next` rotates to the next stage, the manifest is rewritten from the per-stage template; amendments do not carry forward.
 - Global denylist paths cannot be amended in via this command. If a slice genuinely needs a globally-denied path (infra config from a Bebop slice, etc.), the correct answer is to re-slice and reassign the owning agent.
 - Emergency hand-edits to `.mutagen/state/active-slice.json` still work, but bypass the audit trail and the Decision Process. Prefer this command.

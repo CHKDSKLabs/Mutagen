@@ -33,8 +33,6 @@ profile="$(echo "$persona" | tr '[:upper:]' '[:lower:]')"
 
 codex="${CODEX_BIN:-codex}"
 
-# Strip Claude-only frontmatter (tools:, model:) — it means nothing to Codex
-# and clutters the framing block. The description + body are all we need.
 persona_body="$(awk '
   /^---[[:space:]]*$/ { in_fm = !in_fm; next }
   !in_fm { print }

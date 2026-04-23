@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Measure net-new LOC for a slice from git, filtered to the slice's author +
-# adjacent_scope paths. Emits a single line of JSON:
+# Measure net-new LOC for a slice from git, filtered to the slice's declared
+# write scope plus any retry-only adjacent scope. Emits a single line of JSON:
 #
 #   {"slice":"L2-Orders-003","added":214,"deleted":37,"net":177,"target":250,"over_target_pct":0}
 #
@@ -13,14 +13,16 @@
 #     (written by execute-next.md Stage 1 before the author dispatch). If the marker
 #     is absent, falls back to comparing against HEAD's first parent — good enough
 #     to avoid a hard fail, but the caller should treat the number as advisory.
-#   - Path filter = union of the slice's author globs (resolved from author_agent via
-#     the table embedded below) + the slice's optional adjacent_scope_allowed globs.
+#   - Path filter = union of the slice's `write_set` (authoritative) + the
+#     slice's optional `adjacent_scope_allowed` globs.
+#   - If `write_set` is absent because the queue came from an older slicer,
+#     the script falls back to the legacy author-agent table below.
 #   - Outputs JSON on stdout. Silent on stderr unless we genuinely cannot compute.
 #
 # The 120%-of-target hard gate lives in the orchestrator (execute-next.md); this
 # script only reports the numbers.
 
-set -u
+set -euo pipefail
 
 slice_id="${1:-}"
 if [ -z "$slice_id" ]; then
@@ -28,64 +30,96 @@ if [ -z "$slice_id" ]; then
   exit 1
 fi
 
-if ! command -v jq >/dev/null 2>&1; then
+resolve_jq() {
+  if command -v jq >/dev/null 2>&1; then
+    command -v jq
+    return 0
+  fi
+
+  if command -v jq.exe >/dev/null 2>&1; then
+    command -v jq.exe
+    return 0
+  fi
+
+  return 1
+}
+
+JQ_BIN="$(resolve_jq)" || {
   echo '{"error":"jq not installed"}'
   exit 1
-fi
+}
 
 if ! command -v git >/dev/null 2>&1; then
   echo '{"error":"git not installed"}'
   exit 1
 fi
 
-queue=".mutagen_queue_placeholder"
-if [ -r slices/queue.json ]; then
-  queue="slices/queue.json"
-else
+if [ ! -r slices/queue.json ]; then
   echo '{"error":"slices/queue.json not found"}'
   exit 1
 fi
+queue="slices/queue.json"
 
-slice_json=$(jq -c --arg id "$slice_id" '.slices[] | select(.id == $id)' "$queue" 2>/dev/null)
+slice_json=$("$JQ_BIN" -c --arg id "$slice_id" '.slices[] | select(.id == $id)' "$queue" 2>/dev/null)
 if [ -z "$slice_json" ] || [ "$slice_json" = "null" ]; then
   echo "{\"error\":\"slice $slice_id not found in $queue\"}"
   exit 1
 fi
 
-author_agent=$(printf '%s' "$slice_json" | jq -r '.author_agent // ""')
-target_loc=$(printf '%s' "$slice_json" | jq -r '.target_loc // 0')
-adjacent_globs=$(printf '%s' "$slice_json" | jq -r '(.adjacent_scope_allowed // []) | .[]' 2>/dev/null || true)
+author_agent=$(printf '%s' "$slice_json" | "$JQ_BIN" -r '.author_agent // ""')
+target_loc=$(printf '%s' "$slice_json" | "$JQ_BIN" -r '.target_loc // 0')
+write_globs=$(printf '%s' "$slice_json" | "$JQ_BIN" -r '(.write_set // []) | .[]' 2>/dev/null || true)
+adjacent_globs=$(printf '%s' "$slice_json" | "$JQ_BIN" -r '(.adjacent_scope_allowed // []) | .[]' 2>/dev/null || true)
 
-author_globs=""
-case "$author_agent" in
-  Bebop)
-    author_globs=$'src/**\napp/**\napi/**\ncomponents/**\npages/**\ntests/**\nstyles/**\npublic/**'
-    ;;
-  Baxter)
-    # Baxter's paths are cited-module-specific; fall back to the whole repo and
-    # trust the caller to read this result as an upper bound.
-    author_globs=$':(top)*'
-    ;;
-  Chaplin)
-    author_globs=$'migrations/**\nschema/**\ndb/**\nprisma/**\nsrc/models/**\nsrc/queries/**\nsrc/repositories/**\nseeds/**\ntests/db/**\ntests/migrations/**'
-    ;;
-  Metalhead)
-    author_globs=$'observability/**\ndashboards/**\nalerts/**\nslo/**\nrunbooks/alerts/**\nsrc/instrumentation/**\nsrc/tracing/**\nsrc/logging/**\nsrc/metrics/**\nsrc/telemetry/**\ntests/observability/**'
-    ;;
-  Splinter)
-    author_globs=$'docs/api/**\ndocs/onboarding/**\ndocs/guides/**\ndocs/how-to/**\ndocs/architecture/**\ndocs/migration/**\ndocs/glossary.md\nrunbooks/ops/**\nREADME.md\nCONTRIBUTING.md\nCHANGELOG.md'
-    ;;
-  Tatsu)
-    author_globs=$'src/security/**\nsrc/auth/**\nmiddleware/**\npolicies/**\ntests/security/**'
-    ;;
-  Krang)
-    author_globs=$'.github/workflows/**\nfly.toml\nwrangler.toml\nDockerfile\ndocker-compose.*\ninfrastructure/**\nterraform/**\nmigrations/**\n.env.example'
-    ;;
-  *)
-    echo "{\"error\":\"unknown author_agent '$author_agent'\"}"
+legacy_author_globs() {
+  case "$1" in
+    Bebop)
+      printf '%s\n' \
+        'src/**' 'app/**' 'api/**' 'components/**' 'pages/**' 'tests/**' 'styles/**' 'public/**'
+      ;;
+    Baxter)
+      # Older Baxter slices never had a safe derived write set. Use the full
+      # repo as an upper bound instead of pretending certainty.
+      printf '%s\n' ':(top)*'
+      ;;
+    Chaplin)
+      printf '%s\n' \
+        'migrations/**' 'schema/**' 'db/**' 'prisma/**' 'src/models/**' \
+        'src/queries/**' 'src/repositories/**' 'seeds/**' 'tests/db/**' 'tests/migrations/**'
+      ;;
+    Metalhead)
+      printf '%s\n' \
+        'observability/**' 'dashboards/**' 'alerts/**' 'slo/**' 'runbooks/alerts/**' \
+        'src/instrumentation/**' 'src/tracing/**' 'src/logging/**' 'src/metrics/**' \
+        'src/telemetry/**' 'tests/observability/**'
+      ;;
+    Splinter)
+      printf '%s\n' \
+        'docs/api/**' 'docs/onboarding/**' 'docs/guides/**' 'docs/how-to/**' \
+        'docs/architecture/**' 'docs/migration/**' 'docs/glossary.md' 'runbooks/ops/**' \
+        'README.md' 'CONTRIBUTING.md' 'CHANGELOG.md'
+      ;;
+    Tatsu)
+      printf '%s\n' 'src/security/**' 'src/auth/**' 'middleware/**' 'policies/**' 'tests/security/**'
+      ;;
+    Krang)
+      printf '%s\n' \
+        '.github/workflows/**' 'fly.toml' 'wrangler.toml' 'Dockerfile' 'docker-compose.*' \
+        'infrastructure/**' 'terraform/**' 'migrations/**' '.env.example'
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+scope_globs="$write_globs"
+if [ -z "${scope_globs//[$'\n\r\t ']}" ]; then
+  scope_globs="$(legacy_author_globs "$author_agent")" || {
+    echo "{\"error\":\"slice $slice_id is missing write_set and has unknown author_agent '$author_agent'\"}"
     exit 1
-    ;;
-esac
+  }
+fi
 
 ref_file=".mutagen/state/slice-start-ref/$slice_id"
 base_ref=""
@@ -96,13 +130,24 @@ if [ -z "$base_ref" ]; then
   base_ref="HEAD^"
 fi
 
-# Build pathspec list for `git diff`. Include both author globs and adjacent globs.
+# Build pathspec list for `git diff`. Include both declared write_set globs and
+# any retry-only adjacent-scope globs.
 pathspecs=()
 while IFS= read -r g; do
-  [ -n "$g" ] && pathspecs+=(":(glob)$g")
-done <<< "$author_globs"
+  [ -z "$g" ] && continue
+  if [[ "$g" == :\(* ]]; then
+    pathspecs+=("$g")
+  else
+    pathspecs+=(":(glob)$g")
+  fi
+done <<< "$scope_globs"
 while IFS= read -r g; do
-  [ -n "$g" ] && pathspecs+=(":(glob)$g")
+  [ -z "$g" ] && continue
+  if [[ "$g" == :\(* ]]; then
+    pathspecs+=("$g")
+  else
+    pathspecs+=(":(glob)$g")
+  fi
 done <<< "$adjacent_globs"
 
 # `git diff --numstat` is easier to parse than `--stat`: tab-separated added\tdeleted\tpath.

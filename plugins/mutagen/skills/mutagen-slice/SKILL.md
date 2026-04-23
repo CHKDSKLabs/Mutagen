@@ -23,9 +23,10 @@ installer add it.
    - Which documents are missing.
    - Which are present but not Approved / Accepted.
    - Suggest `$mutagen-elicit` to close the gaps.
-3. Check for an existing queue at `slices/queue.json` (preferred) or
-   `slices/queue.md` (legacy). If non-empty, warn the user that re-slicing
-   replaces the queue. Ask for explicit confirmation before proceeding.
+3. Check for an existing queue at `slices/queue.json` (canonical),
+   `slices/slicemap.md` (human-readable), or `slices/queue.md` (legacy
+   shadow). If non-empty, warn the user that re-slicing replaces the queue.
+   Ask for explicit confirmation before proceeding.
 4. Read pipeline mode from `.claude/workflow.json` if present. Default
    `"full"`. Modes:
    - `"full"` — every slice runs Bishop review + Tiger Claw adversarial QA.
@@ -68,10 +69,13 @@ Tasks:
    with no issues is a valid report).
 2. Produce the Slice Queue per your Output Protocol. Write both:
    - `slices/queue.json` — canonical, per $MUTAGEN_ROOT/guides/queue-schema.md
-   - `slices/queue.md` — human-readable rendering of the same data
+   - `slices/slicemap.md` — human-readable, per $MUTAGEN_ROOT/guides/slicemap-spec.md
 3. Every slice must cite upstream IDs: PRD [FR-*]/[NFR-*], ADR, DDD, ISC
    [ISC-NNN], DSD [DSD-###].
-4. In lightweight mode, tag each slice `review_required: true|false` per
+4. Every slice must include `depends_on`, `write_set`, structured
+   `implementation_details`, and
+   `human_check_needed.{required,reason,resolved_at}`.
+5. In lightweight mode, tag each slice `review_required: true|false` per
    $MUTAGEN_ROOT/guides/pipeline-modes.md.
 
 Your write scope for this spawn: slices/**, .mutagen/state/** (see
@@ -103,10 +107,34 @@ Capture Shredder's stdout for the After step.
      `bundle_ready` is `false` when Shredder returned a Readiness Report or
      surfaced a blocking cross-doc conflict.
 2. Surface the full Slice Queue to the user for review. If Shredder did not
-   write both `slices/queue.json` and `slices/queue.md`, stop and flag it.
-3. Surface any deviations, conflicts, or escalation items Shredder flagged.
-4. Clear the active-slice state file: `rm -f .mutagen/state/active-slice.json`.
-5. Tell the user the next step is `$mutagen-execute-next`.
+   write both `slices/queue.json` and `slices/slicemap.md`, stop and flag
+   it.
+3. Re-render from the JSON:
+
+   ```bash
+   bash "$MUTAGEN_ROOT/scripts/render_queue.sh"
+   ```
+
+   This normalizes `slices/slicemap.md` and refreshes `slices/queue.md` as
+   a compatibility shadow.
+4. **Validate the canonical queue before execution.** Run:
+
+   ```bash
+   validator_json="$(bash "$MUTAGEN_ROOT/scripts/validate_queue.sh" slices/queue.json)"
+   validator_status=$?
+   printf '%s\n' "$validator_json" > .mutagen/state/queue-validation.json
+   ```
+
+   Handle the exit code strictly:
+   - `0` → queue valid, continue.
+   - `2` → queue parsed but failed harness validation. Surface the JSON
+     report verbatim, clear `.mutagen/state/active-slice.json`, and stop.
+     Do **not** recommend `$mutagen-execute-next`.
+   - anything else → tooling failure. Surface the JSON payload verbatim,
+     clear `.mutagen/state/active-slice.json`, and stop.
+5. Surface any deviations, conflicts, or escalation items Shredder flagged.
+6. Clear the active-slice state file: `rm -f .mutagen/state/active-slice.json`.
+7. Tell the user the next step is `$mutagen-execute-next`.
 
 ## Reminders
 
@@ -115,6 +143,10 @@ Capture Shredder's stdout for the After step.
   partial queue. Still persist the Readiness Report to
   `.mutagen/state/validation-report.{md,json}` so `$mutagen-status` can see
   why slicing halted.
+- A queue that fails `$MUTAGEN_ROOT/scripts/validate_queue.sh` is not
+  executable, even if the markdown rendering looks fine. The harness
+  validator is the first consumer that gets to veto it.
 - Numbered IDs in slice citations MUST match upstream exactly.
-- `slices/queue.json` is canonical. `slices/queue.md` is a human rendering.
-  Regenerate both whenever the queue changes.
+- `slices/queue.json` is canonical. `slices/slicemap.md` is the primary
+  human rendering. `slices/queue.md` is a legacy shadow regenerated for
+  compatibility.

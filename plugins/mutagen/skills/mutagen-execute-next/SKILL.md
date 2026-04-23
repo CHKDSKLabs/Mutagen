@@ -46,26 +46,22 @@ checking in with the human. Specifically:
 If you catch yourself about to ask the human whether to continue,
 you're wrong. Continue.
 
-## Codex scope-enforcement note
+## Host execution profile
 
-The Claude Code plugin rotates `.mutagen/state/active-slice.json` between
-stages so a `PreToolUse` hook can block out-of-scope writes. Codex's
-`codex_hooks` feature is still under development and currently disabled on
-Windows, so this skill does not ship manifest-level hooks. You still write
-the manifest at each stage transition — for audit, `$mutagen-status`
-visibility, and Traag's mediated amendments via `$mutagen-amend-scope` —
-but enforcement is advisory. Every dispatch prompt must inline the stage's
-`allowed_write_globs` and instruct the agent to self-honour them.
+Resolve the host execution profile through
+`bash "$MUTAGEN_ROOT/scripts/host_profile.sh" --host codex` before each slice
+preflight. Treat the JSON payload as authoritative for:
 
-## Parallel mode on Codex
+- `scope_enforcement` — `hard` vs. `advisory`
+- `parallel_dispatch` — `serial_only` vs. `bounded_cohort`
+- `requested_max_parallel_slices` / `effective_max_parallel_slices`
+- `worktree_isolation`
+- `degraded_features` and `downgrades`
 
-Bounded parallel dispatch (see § Readiness cohort in the Claude variant)
-depends on the Agent-tool `isolation: "worktree"` parameter, which has no
-direct Codex analogue in v1. This skill runs **serial only** — cohort size
-is always 1, regardless of `.claude/workflow.json` `max_parallel_slices`.
-The `depends_on` readiness check still applies (you skip slices whose
-dependencies are unmet), but you never fan out to multiple slices
-concurrently. When Codex ships worktree support, revisit.
+If `scope_enforcement == "advisory"`, inline the current stage's
+`allowed_write_globs` into every spawned prompt and instruct the agent to
+self-honour them. If `parallel_dispatch == "serial_only"`, do not improvise
+cohort mode just because `.claude/workflow.json` asked for it.
 
 ## Session preflight (runs once per invocation)
 
@@ -89,105 +85,66 @@ before entering the per-slice loop.
 ## Preflight (runs once per slice — re-enter at the top of the loop)
 
 1. `mkdir -p .mutagen/state .mutagen/state/evidence .mutagen/state/author-output .mutagen/state/slice-start-ref reviews slices`.
-2. Read `slices/queue.json` (canonical). If the JSON is missing but
-   `slices/queue.md` exists, refuse and tell the user to re-run
-   `$mutagen-slice`. Find the first **ready** slice whose status is `pending`
-   or `blocked_retry`. A slice is ready iff every ID in its `depends_on`
-   array (if any) has `status == "completed"` in the queue. Slices with
-   unmet dependencies are skipped — never run them out of order just because
-   an earlier one is blocked. If nothing is ready, report "queue clear —
-   nothing left to dispatch" (or "queue stalled — dependencies unmet:
-   <list>" when every remaining pending slice has an unmet dep) and stop.
-3. Read `.claude/workflow.json` if present. Extract:
-   - `pipeline_mode` — `"full"` (default) runs Tiger Claw on every slice; `"lightweight"` runs her only on slices with `review_required: true`.
-   - `review.max_retries` — default **2** (up to 3 total author dispatches).
-   - `review.max_micro_corrections` — default **1**. Bounds one-shot
-     mechanical-fix dispatches, tracked independently of `attempts`.
-   - `heartbeat.*` — optional thresholds.
-4. Extract from the chosen slice: `slice_id`, `author_agent`, `layer`,
-   `bounded_context`, `title`, `objective`, `traces_to`, `review_required`,
-   `attempts`, `context_to_update`, `adjacent_scope_allowed` (optional glob
-   array), `depends_on` (optional ID array).
-5. **Build the Evidence Bundle for this slice and write it to disk.** From
-   `traces_to`, resolve every citation to a verbatim excerpt from the cached
-   bundle docs. Citation forms:
-   - `[FR-NNN]` / `[NFR-NNN]` → PRD bracketed ID + parent bullet/section
-   - `ADR-NNNN` → the entire ADR file
-   - DDD element → named section verbatim + cited `[INV-N]` lines
-   - `[ISC-NNN]` → ISC bracketed ID + invariant + detection context
-   - `[DSD-NNN]` → DSD rule line + section heading
+2. **Resolve host behavior through the harness.** Run:
 
-   Structure:
-
-   ```
-   ## Evidence Bundle for <slice_id>
-
-   ### PRD citations
-   <verbatim excerpts>
-
-   ### ADR(s)
-   <full ADR text>
-
-   ### DDD citations
-   <named element + cited [INV-*] lines>
-
-   ### ISC citations
-   <verbatim excerpts>
-
-   ### DSD citations
-   <verbatim excerpts>
+   ```bash
+   bash "$MUTAGEN_ROOT/scripts/host_profile.sh" --host codex
    ```
 
-   **Write it to `.mutagen/state/evidence/<slice_id>.md`.** Every subsequent
-   spawn in this slice (author, Tiger Claw, and any retry re-spawn)
-   receives the file *path* plus the instruction *"Read this file once; do
-   not re-read upstream docs."* — not the inlined text. This keeps prompts
-   small, cache-friendly across retries, and guarantees every agent sees
-   byte-identical evidence. If the file already exists from a prior attempt
-   on the same slice, overwrite it. If a citation cannot be resolved, halt
-   and escalate — Shredder bug.
+   - Treat the returned `scope_enforcement`, `parallel_dispatch`,
+     `effective_max_parallel_slices`, and `degraded_features` as
+     authoritative.
+   - If `parallel_dispatch != "serial_only"`, stop and surface the payload.
+     This skill is the serial Codex path; bounded parallel support belongs in
+     a host adapter upgrade, not in wishful improvisation.
+3. **Claim the next ready slice through the harness.** Run:
 
-6. Initialise `.mutagen/state/active-slice.json` with the **author** stage
-   manifest:
-
-   ```json
-   {
-     "slice_id": "<from queue>",
-     "author_agent": "<from queue>",
-     "active_agent": "<same as author_agent for stage 1>",
-     "stage": "author",
-     "pipeline_mode": "full | lightweight",
-     "review_required": true,
-     "attempts": <current from queue>,
-     "max_retries": <from workflow.json or 2>,
-     "micro_corrections_used": <current from queue or 0>,
-     "max_micro_corrections": <from workflow.json or 1>,
-     "allowed_write_globs": [ "<author paths — see table below>" ]
-   }
+   ```bash
+   bash "$MUTAGEN_ROOT/scripts/prepare_next.sh" --host codex
    ```
 
-   **Adjacent-scope merge (retry only).** On first dispatch (`attempts == 0`
-   before the Stage 1 bump), `allowed_write_globs` is strictly the author
-   paths + state paths. On any retry dispatch (`attempts >= 1` before Stage
-   1 bumps it further), if the slice carries a non-empty
-   `adjacent_scope_allowed`, append those globs to `allowed_write_globs`.
-   Shredder anticipated these cross-cutting files; the retry loop uses them
-   without the human having to hand-edit the manifest. Micro-correction
-   dispatches count as retries for this rule.
-
-7. Mark the slice `in_progress` in `slices/queue.json`. After any mutation
-   of `queue.json`, re-render: `bash "$MUTAGEN_ROOT/scripts/render_queue.sh"`.
+   - Exit `0` with `status: "ready"` → continue. Treat the JSON payload as
+     authoritative for `slice_id`, `title`, `author_agent`, `layer`,
+     `bounded_context`, `objective`, `review_required`, `attempts`,
+     `context_to_update`, `write_set`, `adjacent_scope_allowed`,
+     `depends_on`, `queue_path`, `active_state_path`, and
+     `evidence_bundle_path`.
+   - Also treat the returned `host_profile` object as authoritative for the
+     claimed slice. Do not re-derive host behavior from host name or old
+     command lore.
+   - Exit `0` with `status: "queue_clear"` → report queue clear and stop.
+   - Exit `0` with `status: "stalled"` → report the `blocked` dependency
+     list verbatim and stop.
+   - Exit `2` → refuse execution. Surface the JSON payload verbatim,
+     recommend re-running `$mutagen-slice`, and stop. This covers missing,
+     stale, orphaned, or failed queue-validator state.
+   - Any other exit → tooling failure. Surface the payload verbatim and stop.
+4. Read `.mutagen/state/active-slice.json`. The harness already claimed the
+   slice, wrote the author-stage manifest, and materialized the Evidence
+   Bundle. Do **not** re-select the slice, re-claim it in `slices/queue.json`,
+   or rebuild `.mutagen/state/evidence/<slice_id>.md` by hand.
+5. Read `.claude/workflow.json` if present. Extract `heartbeat.*` for
+   inspection thresholds. Treat `pipeline_mode`, `max_retries`, and
+   `max_micro_corrections` from `.mutagen/state/active-slice.json` as
+   authoritative for the claimed slice, since the harness already resolved
+   the workflow config when it wrote the active state.
+6. Every queue mutation after this point goes through
+   `bash "$MUTAGEN_ROOT/scripts/update_queue_slice.sh" ...`. Do not hand-edit
+   `slices/queue.json`.
+7. Every active-slice stage mutation after this point goes through
+   `bash "$MUTAGEN_ROOT/scripts/transition_active_slice.sh" ...`. Do not
+   hand-edit `.mutagen/state/active-slice.json`.
 
 ## Per-stage scope manifests
 
 | Stage | `active_agent(s)` | `allowed_write_globs` |
 |-------|-------------------|------------------------|
-| `author` | author agent | author paths (below) + `project_state.md` + `infrastructure_state.md` + `.mutagen/state/**` (+ `adjacent_scope_allowed` globs on retry) |
+| `author` | author agent | `write_set` from the queue + `project_state.md` + `infrastructure_state.md` + `.mutagen/state/**` (+ `adjacent_scope_allowed` globs on retry) |
 | `karai_structural` | `Karai` (script-run, no agent spawn) | `.mutagen/state/**` |
 | `review_qa` | `TigerClaw` | `reviews/**` + `tests/qa/**` (+ `tests/qa/security/**` when `author_agent == "Tatsu"`) + `.mutagen/state/**` |
 | `karai_state` | `Karai` | `project_state.md` + `infrastructure_state.md` + `slices/**` + `.mutagen/state/**` |
 
-### Author paths per agent
+### Legacy fallback author paths per agent
 
 | author_agent | author paths |
 |--------------|--------------|
@@ -205,44 +162,26 @@ before entering the per-slice loop.
 
 ### Stage 1 — Author
 
-1. Rotate `active-slice.json` to the `author` manifest. Bump `attempts` by 1.
-   Mirror `attempts` into `slices/queue.json`.
+1. Rotate `active-slice.json` and sync the author-dispatch counter through
+   `bash "$MUTAGEN_ROOT/scripts/transition_active_slice.sh" --slice-id <slice_id> --stage author --bump-attempts`.
 2. **On the first dispatch for this slice** (pre-bump `attempts == 0`),
    record the start-of-slice git ref for LOC telemetry:
    `git rev-parse HEAD > .mutagen/state/slice-start-ref/<slice_id>`. Skip on
    retry — the base ref stays pinned to before the slice began so
    `scripts/slice_loc.sh` measures net-new across the whole attempt sequence.
-3. Spawn the `author_agent`:
+3. Run:
 
    ```bash
-   bash "$MUTAGEN_ROOT/bin/agent.sh" <AuthorAgent> "$(cat <<'PROMPT'
-   <Slice text — reconstructed from queue.json or copied from queue.md>
-
-   Evidence Bundle path: .mutagen/state/evidence/<slice_id>.md
-   Read that file once — every upstream citation required for this slice is
-   already extracted there. Do NOT re-read docs/PRD*, docs/ADR*, docs/DDD*,
-   docs/ISC*, or docs/DSD*; the evidence file is authoritative. Read source
-   files, tests, and existing project state freely.
-
-   Write the State Update block to: <context_to_update>
-
-   Your write scope for this stage (advisory — Codex does not hard-enforce):
-     <allowed_write_globs for this stage, verbatim>
-   Self-honour these globs. If your work requires a path outside them, stop
-   and surface the gap — do not widen scope silently.
-
-   On retry only: Tiger Claw's QA report below contains Suggested Fix
-   blocks. Address each fix in order; keep the change minimal — no refactor.
-   Prior report (by path, do not inline):
-     - reviews/<slice_id>/tiger-claw.md
-   PROMPT
-   )"
+   bash "$MUTAGEN_ROOT/scripts/dispatch_stage.sh" --slice-id <slice_id>
    ```
 
-4. Capture the author's output verbatim and write it to
-   `.mutagen/state/author-output/<slice_id>.md`. Clobber-on-write; the file
-   reflects the latest attempt and is what the structural-check script
-   reads in Stage 2.
+   The wrapper delegates prompt assembly to the Rust harness
+   `prepare-dispatch` runtime, dispatches the current `active_agent`
+   through `bin/agent.sh`, and captures stdout verbatim to
+   `.mutagen/state/author-output/<slice_id>.md`. Treat the JSON payload as
+   authoritative for `agent`, `dispatch_kind`, `prompt_path`,
+   `stdout_capture_path`, `scope_enforcement`, `allowed_write_globs`, and
+   any attached `qa_report_path`. On failure, surface the JSON and stop.
 
 ### Stage 2 — Structural conformance (script)
 
@@ -252,8 +191,9 @@ checks; a script runs them without burning an agent spawn per slice per
 attempt. Karai only wakes for Stage 4 (state verify + dispatch log +
 advisory backlog) and reviewer escalations.
 
-1. Rotate `active-slice.json` to the `karai_structural` manifest (Karai
-   still owns this stage for scope purposes — the manifest is
+1. Rotate `active-slice.json` through
+   `bash "$MUTAGEN_ROOT/scripts/transition_active_slice.sh" --slice-id <slice_id> --stage structural-check`.
+   Karai still owns this stage for scope purposes — the manifest is
    `.mutagen/state/**` writes only).
 2. Run the check:
 
@@ -262,76 +202,99 @@ advisory backlog) and reviewer escalations.
    ```
 
    Capture stdout as a single JSON object: `{verdict, findings[], loc}`.
-   The script reads the author's output from
-   `.mutagen/state/author-output/<slice_id>.md`, the slice metadata from
-   `slices/queue.json`, and the context file (`project_state.md` or
-   `infrastructure_state.md`). It returns `verdict: "pass"` or
-   `verdict: "fail"` deterministically; no prompting involved.
+   The shell entrypoint is a compatibility wrapper; it delegates the real
+   Stage 2 logic to the Rust harness `structural-check` runtime, which reads
+   the author's output from `.mutagen/state/author-output/<slice_id>.md`,
+   the slice metadata from `slices/queue.json`, the context file
+   (`project_state.md` or `infrastructure_state.md`), and the LOC telemetry
+   script. It returns `verdict: "pass"` or `verdict: "fail"`
+   deterministically; no prompting involved.
 3. Branch on `.verdict`:
-   - **`"pass"`** — record `verdicts.karai_structural: "pass"` in
-     `slices/queue.json`. Continue to Stage 3.
+   - **`"pass"`** — record it through
+     `bash "$MUTAGEN_ROOT/scripts/update_queue_slice.sh" --slice-id <slice_id> --karai-structural pass`.
+     Continue to Stage 3.
    - **`"fail"`** — **halt** the pipeline. Mark `slices/queue.json` →
-     `verdicts.karai_structural: "fail"`, `status: "escalated"`,
-     `escalation_reason: "<concat of findings[].detail>"`. Present the full
-     `findings` array to the user verbatim. Do not clear
-     `active-slice.json`. Do not auto-advance. Fire a Pushover halt
-     notification:
+     record the halt through
+     `bash "$MUTAGEN_ROOT/scripts/update_queue_slice.sh" --slice-id <slice_id> --status escalated --karai-structural fail --escalation-reason "<concat of findings[].detail>"`.
+     Present the full `findings` array to the user verbatim. Do not clear
+     `active-slice.json`. Do not auto-advance. `karai_structural_check.sh`
+     now emits and dispatches the canonical `structural_fail`
+     notification from the harness result before returning.
 
-     ```bash
-     bash "$MUTAGEN_ROOT/scripts/notify.sh" structural_fail \
-       "mutagen — structural fail on {slice_id}" \
-       "Structural check halted {slice_id} ({title}): {first finding.detail}. Needs human input."
-     ```
-
-   If the script itself fails to run (jq missing, queue unreadable) it
-   returns `verdict: "fail"` with a tooling finding — treat as any other
-   structural fail. A broken check script is not a pass.
+   If the wrapper or harness runtime fails it returns `verdict: "fail"`
+   with a tooling finding — treat as any other structural fail. A broken
+   check runtime is not a pass.
 
 ### Stage 3 — Tiger Claw (QA)
 
 **Skip entire stage** if `pipeline_mode == "lightweight"` AND
-`review_required == false`. Record `verdicts.bishop: "skip"` and
-`verdicts.tiger_claw: "skip"`. Continue to Stage 4.
+`review_required == false`. Record the skip through
+`bash "$MUTAGEN_ROOT/scripts/update_queue_slice.sh" --slice-id <slice_id> --bishop skip --tiger-claw skip`.
+Continue to Stage 4.
 
 Otherwise:
 
-1. Rotate `active-slice.json` to the `review_qa` manifest.
+1. Rotate `active-slice.json` through
+   `bash "$MUTAGEN_ROOT/scripts/transition_active_slice.sh" --slice-id <slice_id> --stage review`.
    Before dispatch, `mkdir -p reviews/<slice_id>`.
-2. Dispatch Tiger Claw:
+  2. Run:
+
+     ```bash
+     bash "$MUTAGEN_ROOT/scripts/dispatch_stage.sh" --slice-id <slice_id>
+     ```
+
+     The wrapper delegates prompt assembly to the Rust harness
+     `prepare-dispatch` runtime, dispatches Tiger Claw through
+     `bin/agent.sh`, captures stdout to `.mutagen/state/review-output/<slice_id>.md`,
+     and verifies the review artifacts exist:
+     `reviews/<slice_id>/tiger-claw.md` +
+     `.mutagen/state/tiger-claw-latest.md`. It also records
+     `verdicts.bishop: "skip"` plus the canonical `verdicts.tiger_claw`
+     value through `record_review_verdict.sh`. Treat the JSON payload as
+     authoritative for `agent`, `prompt_path`, `stdout_capture_path`,
+     `qa_report_path`, `latest_qa_report_path`, and
+     `required_written_artifacts`.
+  3. Run:
+
+     ```bash
+     bash "$MUTAGEN_ROOT/scripts/review_decision.sh" --slice-id <slice_id>
+     ```
+
+   The wrapper delegates to the Rust harness `review-decision` runtime. It
+   treats `slices/queue.json` as canonical for the recorded Tiger Claw
+   verdict, parses Tiger Claw's machine-readable `Retry Contract` JSON from
+   the QA report, validates retry budgets from `.mutagen/state/active-slice.json`,
+   and returns one of four actions:
+   - `continue` → proceed to Stage 4.
+   - `micro_correction` → use the returned `active_agent`,
+     `suggested_fix_files`, and `suggested_fix_summary` in the
+     micro-correction branch below.
+   - `retry` → the harness already marked `status: "blocked_retry"`; loop
+     back to Stage 1 with the QA report path.
+   - `escalated` → the harness already marked `status: "escalated"` and
+     populated `escalation_reason`; stop, notify, and present the QA report
+     verbatim.
+
+### Stage 4 — Canonical closure (state verification + dispatch log)
+
+1. Rotate `active-slice.json` through
+   `bash "$MUTAGEN_ROOT/scripts/transition_active_slice.sh" --slice-id <slice_id> --stage state-record`.
+2. Run:
 
    ```bash
-   bash "$MUTAGEN_ROOT/bin/agent.sh" TigerClaw "$(cat review_prompt.md)"
+   bash "$MUTAGEN_ROOT/scripts/finalize_slice.sh" --slice-id <slice_id>
    ```
 
-   The prompt tells her to write `reviews/<slice_id>/tiger-claw.md` + a
-   convenience copy at `.mutagen/state/tiger-claw-latest.md`. She reads
-   `.mutagen/state/evidence/<slice_id>.md` once — do NOT inline the bundle
-   into the prompt.
-3. Record verdicts in `slices/queue.json`:
-   - `verdicts.bishop: "skip"` — Bishop is disabled, always.
-   - Tiger Claw: 🟢 Clean → `"clean"`; 🟡 Gap → `"gap"`; ⏭ Skip → `"skip"`;
-     🔴 Defect → `"defect"`.
-4. **Confirm the QA report is persisted**:
-   `reviews/<slice_id>/tiger-claw.md` + `.mutagen/state/tiger-claw-latest.md`
-   (clobber-on-write). If missing, treat as non-conformant and escalate.
-   Do not fabricate the file.
-5. Evaluate:
-   - Non-🔴 → continue to Stage 4.
-   - 🔴 Defect → enter the re-review retry loop.
-
-### Stage 4 — Karai state verification + dispatch log
-
-1. Rotate `active-slice.json` to the `karai_state` manifest.
-2. Re-spawn Karai for Verify-state. Append a Dispatch Log row with the
-   final Tiger Claw verdict. Advisory-backlog append (Bishop's old job) is
-   skipped while Bishop is disabled.
-3. Record completion: `status: "completed"`, `completed_at: <ISO-8601 UTC>`.
-
-### Stage 5 — Record, offload, advance
-
-1. Re-render: `bash "$MUTAGEN_ROOT/scripts/render_queue.sh"`.
-2. **Write the slice summary.** `mkdir -p slices/<slice_id>` and emit
-   `slices/<slice_id>/summary.md` with this shape:
+   The wrapper delegates to the Rust harness `finalize-slice` runtime. It:
+   verifies the State Update block still exists in `context_to_update`,
+   records `status: "completed"` plus `completed_at`, writes
+   `slices/<slice_id>/summary.md`, appends `.mutagen/state/dispatch-log.jsonl`,
+   clears `.mutagen/state/active-slice.json`, and re-renders the queue
+   markdown. Treat the JSON payload as authoritative for `summary_path`,
+   `dispatch_log_path`, `retry_path`, `files_touched`, `layer_complete`,
+   `completed_in_layer`, `next_pending_slice_id`, `completion_marker`, and
+   any emitted `notifications`.
+3. The summary written by the harness has this shape:
 
    ```markdown
    # Slice summary — <slice_id>
@@ -365,22 +328,19 @@ Otherwise:
    (author output, Tiger Claw report body) forward in
    its own context. Reference the summary file; re-read on demand.
 
-3. Clear `.mutagen/state/active-slice.json`.
-4. **Milestone check.** Inspect `slices/queue.json`: if no `pending` or
-   `blocked_retry` slice remains in the just-completed slice's `layer`,
-   fire:
+### Stage 5 — Notify, offload, advance
 
-   ```bash
-   bash "$MUTAGEN_ROOT/scripts/notify.sh" layer_complete \
-     "mutagen — layer <N> complete" \
-     "<M> slices completed in layer <N>. Next pending slice: <id or 'queue clear'>"
-   ```
-
-   The notifier self-gates via `.claude/workflow.json` `notify.milestones`.
-5. **Emit the one-line completion marker AND immediately continue in the
+1. **Milestone notification.** `finalize_slice.sh` now emits and dispatches
+   any milestone notifications listed in its `notifications` array. Today
+   that means `layer_complete` when the finalized slice closes the last
+   pending / blocked-retry slice in its layer. The shell wrapper relays
+   those events through `notify.sh`, which still self-gates via
+   `.claude/workflow.json` `notify.milestones`.
+2. **Emit the one-line completion marker AND immediately continue in the
    same turn.** The full summary is on disk at
-   `slices/<slice_id>/summary.md`; do not restate its contents here. The
-   marker is exactly one line in this shape and nothing more:
+   `slices/<slice_id>/summary.md`; do not restate its contents here. Use the
+   exact `completion_marker` returned by `finalize_slice.sh`, which follows
+   this shape and nothing more:
 
    `✔ <slice_id> — <tiger_claw verdict>, attempts=<N>[, micro_correction][ — heartbeat: <anomaly>]`
 
@@ -391,8 +351,8 @@ Otherwise:
    tool calls for the next slice. Ending your turn after the marker
    without having dispatched the next Preflight is the violation we're
    trying to avoid.
-6. **Auto-advance** if the queue has a `pending` or `blocked_retry` slice.
-   Jump back to Preflight — in the same turn as step 5's marker. No fresh
+3. **Auto-advance** if the queue has a `pending` or `blocked_retry` slice.
+   Jump back to Preflight — in the same turn as step 2's marker. No fresh
    prompt, no permission question, no "let me know if you'd like to
    continue." Keep looping until a stop condition fires.
 
@@ -408,16 +368,22 @@ Halt the loop (do not clear active-slice.json) and fire Pushover
 notifications on:
 
 - **Queue clear** — report "queue clear — all slices completed" and stop.
-  Fire `notify.sh queue_clear "mutagen — queue clear" "N slices completed."`.
+  `prepare_next.sh` now emits and dispatches the canonical `queue_clear`
+  notification from the harness result.
 - **Queue stalled** — pending slices remain but every one has an unmet
   `depends_on`. Report the stall list and stop. (No separate notify event;
   this is a planning issue, surface via normal output.)
-- **Structural escalation** — Stage 2 fail. Notification fired in Stage 2.
-- **Retry budget exhausted** — retry loop escalation.
-- **Scope violation** — an agent self-reported or a reviewer caught an
-  out-of-scope write. Fire `notify.sh scope_violation "mutagen — scope
-  violation on {slice_id}" "Out-of-scope write in stage {stage}. Agent:
-  {active_agent}."`.
+- **Structural escalation** — Stage 2 fail. `karai_structural_check.sh`
+  already emitted and dispatched the canonical `structural_fail`
+  notification from the harness result.
+- **Retry budget exhausted** — retry loop escalation. `review_decision.sh`
+  emits and dispatches the escalation notification from the harness result.
+- **Scope violation** — the guard hook blocked a write and persisted
+  `.mutagen/state/scope-violation.json`. Run
+  `bash "$MUTAGEN_ROOT/scripts/scope_violation.sh"`. It normalizes the
+  violation through the harness, marks the slice `escalated` when
+  possible, emits the canonical `scope_violation` notification, and
+  returns the violation payload to surface verbatim.
 - **User interrupt** — complete in-flight stage cleanly, report, wait.
 
 ---
@@ -441,11 +407,13 @@ budget is exhausted. A 3-line mechanical fix shouldn't cost a full author +
 structural-check + parallel-review cycle when a micro-correction closes it
 on attempt 1.
 
-1. Read `attempts` and `micro_corrections_used` from
-   `.mutagen/state/active-slice.json` (initialise `micro_corrections_used:
-   0` on first entry).
+1. Run `bash "$MUTAGEN_ROOT/scripts/review_decision.sh" --slice-id <slice_id>`
+   and treat its JSON payload as authoritative for the retry branch. The
+   harness owns the budget math, queue mutation, and retry/escalation
+   decision.
 
-2. **Escape-hatch evaluation** — run first, on every 🔴 entry.
+2. **Escape-hatch evaluation** — the runtime decides this first, on every
+   🔴 entry.
 
    **Hatch availability:** `micro_corrections_used < max_micro_corrections`.
    If the budget is spent, skip to step 3.
@@ -456,25 +424,31 @@ on attempt 1.
      renames, stale comments. No new behavior, no contract change.
    - **Named fix.** You can state the exact file(s), change, and point at
      a reviewer's `Suggested Fix` block.
-   - **In-scope executor.** Fix path is in `author_agent`'s globs + any
-     `adjacent_scope_allowed` globs, or in Bebop's globs (fallback for
-     test / wiring misses).
+   - **In-scope executor.** Fix path is in the slice `write_set` + any
+     `adjacent_scope_allowed` globs, or in the legacy author-path fallback
+     when `write_set` is absent. Bebop stays the fallback for test / wiring
+     misses.
 
    All four hold → dispatch a **micro-correction**:
 
-   1. Rotate `active-slice.json` to the `author` manifest (retry rules
-      apply — `adjacent_scope_allowed` merges in). Choose the executor:
-      current `author_agent` if the fix sits in their globs, otherwise
-      Bebop. Record chosen agent in `active_agent`.
-   2. Increment `micro_corrections_used` by 1 in active-slice.json and
-      mirror to `slices/queue.json` as `verdicts.micro_corrections_used`.
-      **Do not** bump `attempts` — a micro-correction is not a full author
+   1. Rotate `active-slice.json` and sync micro-correction bookkeeping
+      through
+      `bash "$MUTAGEN_ROOT/scripts/transition_active_slice.sh" --slice-id <slice_id> --stage author --active-agent <chosen agent> --bump-micro-corrections`,
+      where `<chosen agent>` is the `active_agent` returned by
+      `review_decision.sh`. Retry rules still apply —
+      `adjacent_scope_allowed` merges in when the queue is already in retry
+      state.
+   2. **Do not** bump `attempts` — a micro-correction is not a full author
       dispatch and must not consume the retry budget.
-   3. Prompt the executor with the Evidence Bundle path, the prior author
-      output (by path), and a tight micro-correction instruction: the
-      cited `Suggested Fix` verbatim, the exact file(s) and change, and
-      the rule *"change only what is named here — no refactor, no
-      tangential cleanup, no scope expansion."*
+   3. Run:
+
+      ```bash
+      bash "$MUTAGEN_ROOT/scripts/dispatch_stage.sh" --slice-id <slice_id> --dispatch-kind micro_correction --qa-report <qa_report_path>
+      ```
+
+      The harness-prepared prompt carries the evidence path, QA report path,
+      current stage scope, and bounded-fix instruction. Treat its JSON
+      payload as authoritative.
    4. On return, run Stage 2 (structural check script) normally, then
       Stage 3 (Tiger Claw) one more time.
    5. If Tiger Claw returns non-🔴 → normal Stage 4 completion. Record
@@ -490,12 +464,17 @@ on attempt 1.
    - If `attempts >= max_retries + 1`, retry budget is exhausted →
      **escalate** (step 4).
    - Otherwise, retry is allowed:
-     - Mark `status: "blocked_retry"`. Re-render.
-     - Confirm the triggering QA report is persisted
-       (`reviews/<slice_id>/tiger-claw.md` + `.mutagen/state/tiger-claw-latest.md`).
-     - Loop back to **Stage 1**. The author is re-dispatched with every
-       Suggested Fix from Tiger Claw's report. After Stage 1 returns,
-       proceed through Stage 2, then Stage 3 re-runs Tiger Claw fresh.
+     - `review_decision.sh` already marked `status: "blocked_retry"` through
+       the harness and left `.mutagen/state/active-slice.json` intact at
+       `stage: review`.
+     - Loop back to **Stage 1** and run:
+
+       ```bash
+       bash "$MUTAGEN_ROOT/scripts/dispatch_stage.sh" --slice-id <slice_id> --dispatch-kind retry --qa-report <qa_report_path>
+       ```
+
+       The harness-prepared prompt carries the QA report path and retry
+       instructions; do not hand-inline Suggested Fixes.
      - `attempts` is bumped in Stage 1 (not here). `adjacent_scope_allowed`
        merges into the manifest because `attempts >= 1` on any retry.
 
@@ -503,17 +482,12 @@ on attempt 1.
    retry budget is exhausted, or when a micro-correction returned a fresh
    block AND both budgets are now spent:
 
-   - Mark `status: "escalated"`, `escalation_reason: "Tiger Claw Defect
-     after N attempts (micro_corrections_used: M)"`. Leave verdicts recorded.
-   - Re-render `slices/queue.md`.
+   - Mark the halt through
+     `review_decision.sh` already marked the slice `escalated` and populated
+     the canonical `escalation_reason`. Leave verdicts recorded.
    - Do not clear `active-slice.json`.
-   - Fire:
-
-     ```bash
-     bash "$MUTAGEN_ROOT/scripts/notify.sh" escalation \
-       "mutagen — halted at {slice_id}" \
-       "{slice_id} ({title}) escalated after {N} attempts ({M} micro-corrections). Blocked by: Tiger Claw. Needs human input."
-     ```
+   - The wrapper already emits and dispatches the canonical escalation
+     notification returned by `review_decision.sh`.
 
    - Stop auto-advance. Present Tiger Claw's QA report verbatim.
    - Wait for user instruction.
@@ -528,7 +502,7 @@ Tiger Claw re-runs fresh on each retry.
 - Do **not** rotate stages further.
 - Present failing gate's report(s) verbatim.
 - `slices/queue.json` has `status: "escalated"` and populated
-  `escalation_reason`; re-render.
+  `escalation_reason`; use the update helper rather than hand-editing it.
 - **Do not auto-advance.**
 
 ## Reminders
@@ -541,5 +515,8 @@ Tiger Claw re-runs fresh on each retry.
   human.
 - `attempts` and `micro_corrections_used` persist across invocations on the
   same slice.
-- Parallel mode (`max_parallel_slices > 1`) is unsupported on Codex v1 —
-  this skill runs serial regardless of the config value.
+- Host behavior comes from `host_profile.sh`, not the host name in your
+  head. If the profile says `serial_only`, believe it and stay serial.
+- `$mutagen-execute-next` does **not** refresh or regenerate
+  `.mutagen/state/queue-validation.json`. Missing, stale, orphaned, or
+  failed validator state hands the workflow back to `$mutagen-slice`.

@@ -149,6 +149,18 @@ Hand Karai your QA Report (see Output Format). She carries the verdict into her 
 #### Persistence
 QA Report written to `reviews/{slice-id}/tiger-claw.md`; convenience copy at `.mutagen/state/tiger-claw-latest.md`.
 
+#### Retry Contract
+```json
+{
+  "hatch_eligible": false,
+  "suggested_fix_scope": "none",
+  "suggested_fix_files": [],
+  "suggested_fix_summary": ""
+}
+```
+
+*This block is machine-readable and mandatory. On `🟢 Clean` / `🟡 Gap` / `⏭ Skip`, leave the default `none` values. On `🔴 Defect confirmed`, set `hatch_eligible: true` only when the fix is a bounded mechanical correction the harness may safely attempt, set `suggested_fix_scope` to `mechanical` or `reslice`, list every file the fix should touch, and keep `suggested_fix_summary` to one sentence. The harness reads this block literally; if you cannot justify the hatch, leave it false.*
+
 *For Gap or Defect, include:*
 - Category (invariant / NFR / boundary / seam / concurrency)
 - Citation hit (`[ISC-NNN]` / `[NFR-*]` / `[INV-*]`)

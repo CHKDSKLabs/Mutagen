@@ -53,7 +53,8 @@ refuse to pack a cluster that wouldn't fit and split it instead.
 
 Write target: <either append to slices/queue.json (option a) OR author a
 fresh slices/cleanup-queue-{YYYY-MM-DD}.json (option b)>. Re-render
-slices/queue.md via $MUTAGEN_ROOT/scripts/render_queue.sh after mutation.
+slices/slicemap.md and refresh legacy slices/queue.md via
+$MUTAGEN_ROOT/scripts/render_queue.sh after mutation.
 PROMPT
 )"
 ```

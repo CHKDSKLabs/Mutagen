@@ -83,7 +83,7 @@ For every slice, assign exactly one agent based on domain, complexity, and secur
 1. **Full traceability.** Every slice cites, at minimum: the PRD `[FR-*]`/`[NFR-*]` it satisfies, the ADR(s) that constrain it, the DDD bounded context and element it realizes, the `[ISC-NNN]` invariants it must uphold, and the `[DSD-###]` rules it must conform to. A slice with no upstream citation is invalid.
 2. **Persistent context document.** Every slice concludes with an instruction to update `project_state.md` (application work) or `infrastructure_state.md` (Krang work), noting what changed and which upstream IDs are now implemented.
 3. **Self-verifiable.** Every slice includes concrete verification commands — not assertions. Verification must exercise three things: (a) the acceptance criteria for the cited PRD requirements, (b) the detection mechanism for every cited ISC, and (c) the DSD lint / contract / token conformance where applicable.
-4. **Strict size limit — 300–500 LOC net-new.** Larger features must be broken into multiple slices. If you cannot keep a slice under 500 LOC without violating dependency order, surface that to the human instead of merging concerns.
+4. **Default target — ~300 LOC net-new.** Aim for roughly 200–350 LOC. Anything above 350 should be exceptional and justified by dependency order, and anything above 500 is invalid. If you cannot keep a slice under 500 LOC without violating dependency order, surface that to the human instead of merging concerns.
 5. **Default to human confirmation.** If the bundle is ambiguous, if a new conflict surfaces mid-slicing, or if a structural decision falls outside the documented context — stop immediately, summarize the blocker with citations, and await human confirmation. Never guess on behalf of the design.
 
 ---
@@ -93,28 +93,57 @@ For every slice, assign exactly one agent based on domain, complexity, and secur
 You emit the slice queue in **two** forms, both written to disk:
 
 1. **`slices/queue.json`** — the canonical, machine-readable queue. Schema: [`guides/queue-schema.md`](../guides/queue-schema.md). Karai reads this. You author it. Do not skip it.
-2. **`slices/queue.md`** — the human-readable rendering, generated from the same data. Format below. The markdown never contradicts the JSON; if they drift, the JSON wins.
+2. **`slices/slicemap.md`** — the human-readable review artifact. Spec: [`guides/slicemap-spec.md`](../guides/slicemap-spec.md). The slicemap never contradicts the JSON; if they drift, the JSON wins.
+
+`slices/queue.md` is a legacy compatibility shadow rendered later from the JSON. It is not your contractual output.
 
 ### `slices/queue.json` — required fields
 
-For every slice, populate at minimum: `id`, `title`, `status: "pending"`, `author_agent`, `layer`, `bounded_context`, `target_loc`, `review_required`, `traces_to.{prd,adr,ddd,isc,dsd}`, `context_to_update`, `objective`, `implementation_details`, `verification_steps.{acceptance,isc_detection,dsd_conformance}`, `human_check_needed.{required,reason}`. Initialize `attempts: 0`, `verdicts: {karai_structural: null, bishop: null, tiger_claw: null}`, `completed_at: null`, `escalation_reason: null`. Set top-level `version: 1`, `generated_at` to current UTC, `generated_by: "Shredder"`, `pipeline_mode` copied from `.claude/workflow.json`.
+At the top level, populate at minimum: `version: 1`, `generated_at`, `generated_by: "Shredder"`, `pipeline_mode`, `planning_advisories`, and `slices`.
 
-### `slices/queue.md` — human rendering
+For every slice, populate at minimum:
 
-One section per slice, same Slice ID headings as below. The JSON is authoritative; the markdown is a courtesy.
+- `id`
+- `title`
+- `phase` (or `null`)
+- `status: "pending"`
+- `author_agent`
+- `layer`
+- `bounded_context`
+- `target_loc`
+- `objective`
+- `context_to_update`
+- `implementation_details`
+- `review_required`
+- `attempts: 0`
+- `micro_corrections_used: 0`
+- `depends_on`
+- `adjacent_scope_allowed`
+- `write_set`
+- `traces_to.{prd,adr,ddd,isc,dsd}`
+- `verification_steps.{acceptance,isc_detection,dsd_conformance}`
+- `human_check_needed.{required,reason,resolved_at}`
 
-### `[Slice ID: L{Layer}-{BoundedContext}-{Sequence}]` — {Task name}
+You may initialize runtime convenience fields such as `verdicts`, `completed_at`, and `escalation_reason`, but the queue is not invalid if those are absent. The execution contract lives in the fields above.
+
+### `slices/slicemap.md` — human rendering
+
+Group slices by layer. Surface any planning advisories first. Each slice block should include the same identifiers and intent as the JSON, but in review-friendly prose.
+
+### `[Slice ID: L{Layer}-{BoundedContext}-{Sequence}] [Phase: {Phase}] — {Task name}`
 
 - **Assigned Agent:** Bebop | Baxter | Chaplin | Metalhead | Splinter | Tatsu | Krang — *one-line justification*
 - **Objective:** *one-sentence summary*
 - **Bounded Context:** *DDD §3.x context name (use `Core` / `Infra` for Layer 1 when not domain-scoped)*
+- **Depends On:** *slice IDs or `none`*
+- **Write Set:** *authoritative file globs summarized from `write_set`*
 - **Traces to:**
   - **PRD:** `[FR-*]`, `[NFR-*]` …
   - **ADR:** ADR-NNN …
   - **DDD:** *aggregate / command / event / query being realized*
   - **ISC:** `[ISC-NNN]` … *(invariants this slice must uphold)*
   - **DSD:** `[DSD-###]` … *(rules this slice must conform to)*
-- **Target LOC:** < 500 net-new
+- **Target LOC:** `~300` by default; justify drift above that
 - **Context to Update:** *file and section in `project_state.md` / `infrastructure_state.md`*
 - **Implementation Details:**
   - *specific technical instruction 1*
@@ -123,7 +152,7 @@ One section per slice, same Slice ID headings as below. The JSON is authoritativ
   - *Acceptance:* *exact command or test*
   - *ISC detection:* *exact command or test for each cited `[ISC-NNN]`*
   - *DSD conformance:* *lint / contract / token check*
-- **Human Check Needed?:** Yes / No — *why*
+- **Human Check Needed?:** Yes / No — *why* — *resolved / unresolved*
 
 ---
 

@@ -1,0 +1,122 @@
+# harness
+
+This directory is the start of turning `mutagen` from a host-shaped workflow bundle into a real harness.
+
+## Why this exists
+
+The current workflow has a few structural problems:
+
+- Most orchestration lives in skill and command prose instead of executable runtime code.
+- Core behavior changes by host. Claude can enforce some rules that Codex on Windows can only describe politely and hope for the best.
+- Safety, scope, and stage sequencing depend too much on agents behaving themselves.
+- Runtime behavior and documentation have already drifted. That situation tends to age like milk.
+
+## Goal
+
+Build a canonical runtime that owns:
+
+- queue selection and stage transitions
+- evidence bundle construction
+- scope policy and enforcement decisions
+- structural checks, retries, and escalation rules
+- persisted state, summaries, and telemetry
+- host adapters for Claude, Codex, and anything else later
+
+## Non-goals for now
+
+- rewriting the existing plugin in place
+- cloning the current prompt stack under a new folder and calling that architecture
+- baking host-specific quirks into the core runtime
+
+## First milestone
+
+Ship a minimal harness that can:
+
+1. Read `slices/queue.json`.
+2. Pick the next ready slice deterministically.
+3. Materialize `.mutagen/state/active-slice.json`.
+4. Build the evidence bundle for the selected slice.
+5. Run deterministic structural checks.
+6. Hand stage execution to a host adapter.
+7. Persist verdicts, summaries, and escalation state.
+
+## Rust runtime
+
+The harness now has a Rust crate under this directory.
+
+Useful commands:
+
+```bash
+cargo run --manifest-path harness/Cargo.toml -- host-capabilities --host codex
+cargo run --manifest-path harness/Cargo.toml -- host-profile --host codex --workflow-config .claude/workflow.json
+cargo run --manifest-path harness/Cargo.toml -- validate-queue --queue slices/queue.json
+cargo run --manifest-path harness/Cargo.toml -- prepare-next --queue slices/queue.json --dry-run
+cargo run --manifest-path harness/Cargo.toml -- prepare-dispatch --slice-id L1-orders-001
+cargo run --manifest-path harness/Cargo.toml -- record-review-verdict --slice-id L1-orders-001
+cargo run --manifest-path harness/Cargo.toml -- update-slice --slice-id L1-orders-001 --status in_progress --attempts 1
+cargo run --manifest-path harness/Cargo.toml -- transition-active-slice --slice-id L1-orders-001 --stage author --bump-attempts
+cargo run --manifest-path harness/Cargo.toml -- review-decision --slice-id L1-orders-001
+cargo run --manifest-path harness/Cargo.toml -- scope-violation --violation-report .mutagen/state/scope-violation.json
+cargo run --manifest-path harness/Cargo.toml -- amend-scope --requested-glob src/orders/support/** --mutation-kind modify --reason "Need a helper beside the aggregate."
+cargo run --manifest-path harness/Cargo.toml -- finalize-slice --slice-id L1-orders-001 --completed-at 2026-04-22T18:00:00Z
+```
+
+`prepare-next` now resolves and validates a slice-scoped evidence bundle before
+claiming the next slice. On non-dry runs it writes the bundle to
+`.mutagen/state/evidence/<slice_id>.md`.
+
+`prepare-dispatch` is the canonical stage-prompt builder for `author` and
+`review`. It reads the active slice plus queue metadata, writes the prompt
+artifact under `.mutagen/state/dispatch/<slice_id>/`, and returns the target
+agent, capture path, required artifacts, and scope metadata so the shell layer
+can dispatch without re-assembling the contract in markdown.
+
+`record-review-verdict` is the canonical Stage 3 verdict normalizer. It reads
+Tiger Claw's persisted QA report, parses the verdict section, verifies the
+latest-report convenience copy agrees, and records `verdicts.bishop: "skip"`
+plus the canonical `verdicts.tiger_claw` value in `slices/queue.json`.
+
+`host-profile` is the canonical host abstraction edge. It resolves the
+requested workflow config against the selected host and returns the effective
+execution profile: serial vs. bounded parallel, hard vs. advisory scope
+enforcement, worktree isolation, telemetry collection mode, interrupt support,
+and any explicit downgrades.
+
+`update-slice` is the canonical queue mutation path for runtime bookkeeping:
+status flips, gate verdicts, retry counters, completion timestamps, and
+escalation reasons.
+
+`transition-active-slice` is the canonical active-state rotation path. It
+rewrites `active-slice.json` for the current stage and syncs retry counters
+back into the queue when the transition changes them.
+
+`review-decision` is the canonical Stage 3 control path after verdict
+recording. It reads Tiger Claw's persisted QA report, parses the
+machine-readable retry contract, decides continue vs. micro-correction vs.
+blocked retry vs. escalation, and persists queue state when the decision
+changes it.
+
+`finalize-slice` is the canonical successful-closeout path. It verifies the
+state update, records completion in the queue, writes the slice summary,
+appends the dispatch log, and clears `active-slice.json`.
+
+The harness now also emits canonical notification intents for queue-clear,
+structural failure, scope violation, retry-budget exhaustion, and
+layer-complete milestones. The plugin shell wrappers relay those intents
+through the existing `notify.sh` transport.
+
+`scope-violation` is the canonical Traag halt normalizer. It reads the
+machine-written violation artifact from `.mutagen/state/scope-violation.json`,
+marks the active slice escalated in the queue when possible, and emits the
+canonical halt metadata plus notification payload.
+
+`amend-scope` is the canonical policy evaluator for widening the current
+stage manifest. It decides ALLOW / DENY from persisted slice state, global
+deny rules, stage fidelity, and active-agent domain, then writes the live
+manifest plus `.mutagen/state/amendments.jsonl` audit records itself.
+
+## Working rule
+
+If a behavior matters, the harness should enforce it or record it. If the only control is "the prompt said pretty please," that is not a control plane.
+
+See `REQUIREMENTS.md`, `SLICEMAP_SPEC.md`, `QUEUE_SCHEMA.md`, `SHREDDER_OUTPUT_SPEC.md`, `ARCHITECTURE.md`, `STATE_MACHINE.md`, and `WORKLIST.md`.

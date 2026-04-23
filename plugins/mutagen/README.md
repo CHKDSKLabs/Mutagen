@@ -25,7 +25,7 @@ For local development, point Claude Code at a checkout:
 claude --plugin-dir /path/to/agentic_design_workflow/plugins/mutagen
 ```
 
-Requires `bash` and `jq` on PATH for the scope-enforcement hook. Without `jq` the hook fails open with a warning; set `STRICT_GUARD=1` to fail closed instead.
+Requires `bash`, `jq`, and `git` on PATH for the shell helpers. The slice-authoring flow, host-profile resolution, queue mutation helpers, active-slice stage rotation, Stage 2 structural gate, and final slice closure delegate to the Rust harness, so `cargo` and `rustc` must be available on PATH unless you replace those steps with a prebuilt harness binary. Without `jq` the scope guard fails open with a warning; set `STRICT_GUARD=1` to fail closed instead.
 
 ## The five upstream documents
 
@@ -106,10 +106,10 @@ Namespaced under `mutagen:`:
 | Command | Purpose |
 |---------|---------|
 | `/mutagen:elicit` | Run April to interview you and author / iterate the five upstream documents. Persists her Readiness Brief to `.mutagen/state/readiness-brief.{md,json}`. |
-| `/mutagen:slice` | Run Shredder on the approved bundle to produce a dependency-ordered slice queue. Emits `slices/queue.json` (canonical) and `slices/queue.md` (rendered), and persists his Validation Report to `.mutagen/state/validation-report.{md,json}`. |
-| `/mutagen:execute-next` | Run Karai on the next pending slice — dispatches the assigned executor with per-stage manifest rotation, runs **Bishop and Tiger Claw in parallel** as a single review stage, retries the author on 🔴 Block / 🔴 Defect up to `review.max_retries`, records state, and **auto-advances to the next pending slice** until the queue is empty or a stage escalates. |
-| `/mutagen:amend-scope` | Invoke Traag to evaluate a mid-slice amendment request against the current stage's manifest, the active agent's domain, and the global denylist. ALLOW rewrites `.mutagen/state/active-slice.json`; DENY returns a Violation Report. |
-| `/mutagen:status` | Read-only report on upstream-document status, April's Readiness Brief, Shredder's Validation Report, queue progress, active slice, heartbeat telemetry, gate verdicts, and open escalations. |
+| `/mutagen:slice` | Run Shredder on the approved bundle to produce a dependency-ordered slice queue. Emits `slices/queue.json` (canonical) and `slices/slicemap.md` (human-readable), refreshes legacy `slices/queue.md` as a compatibility shadow, then validates the queue through the harness before handing it to Karai. Persists Shredder's Validation Report to `.mutagen/state/validation-report.{md,json}` and the harness queue-validator report to `.mutagen/state/queue-validation.json`. |
+| `/mutagen:execute-next` | Run Karai on the next pending slice — refuses dispatch when the queue-validation report is missing, stale, orphaned, or failed, resolves host behavior through the harness `host-profile` runtime, claims the next ready slice through the harness `prepare-next` runtime, rotates active-slice manifests through the harness `transition-active-slice` runtime, prepares canonical stage prompt artifacts through the harness `prepare-dispatch` runtime, dispatches the assigned executor through `dispatch_stage.sh`, runs the Stage 2 structural gate through the harness `structural-check` runtime, normalizes Traag DENY events through the harness `scope-violation` runtime, records Tiger Claw verdicts through the harness `record-review-verdict` runtime, resolves retry vs. micro-correction vs. escalation through the harness `review-decision` runtime, closes successful slices through the harness `finalize-slice` runtime, and relays harness-authored queue-clear / scope-violation / escalation / layer-complete notifications through the existing Pushover shell notifier before **auto-advancing to the next pending slice** until the queue is empty or a stage escalates. |
+| `/mutagen:amend-scope` | Evaluate a mid-slice amendment request through the harness `amend-scope` runtime. The runtime enforces stage fidelity, active-agent domain, and global deny rules, rewrites `.mutagen/state/active-slice.json` on ALLOW, appends `.mutagen/state/amendments.jsonl` on both ALLOW and DENY, and returns the canonical rationale / next-step payload. |
+| `/mutagen:status` | Read-only report on upstream-document status, April's Readiness Brief, Shredder's Validation Report, harness queue-validation state, queue progress, active slice, latest scope-violation artifact, heartbeat telemetry, gate verdicts, and open escalations. |
 | `/mutagen:setup-pushover` | First-run wizard for Pushover notifications — detects existing config, collects user key + app token, lets you pick env-var or `workflow.json` storage, optionally configures `quiet_events`, and sends a test push. |
 
 Typical rhythm on a new project:
@@ -126,7 +126,7 @@ Blocks return exit code 2 with a stderr message that surfaces to Claude as the r
 
 ## Pushover notifications (optional)
 
-Long `/mutagen:execute-next` runs auto-advance through the queue without prompting. To find out when the pipeline halts without staring at the terminal, wire in [Pushover](https://pushover.net/): whenever a slice escalates (retry budget exhausted, Karai structural fail, or Traag scope denial) the plugin fires a push to your phone. Queue-clear is also supported as an opt-in success ping.
+Long `/mutagen:execute-next` runs auto-advance through the queue without prompting. To find out when the pipeline halts without staring at the terminal, wire in [Pushover](https://pushover.net/): whenever a slice escalates (retry budget exhausted, Karai structural fail, or Traag scope denial) the plugin fires a push to your phone. Queue-clear is also supported as an opt-in success ping. Queue-clear, structural-fail, retry-budget, and layer-complete events now originate in the harness runtime and get relayed through the existing shell transport.
 
 **The easy way: run `/mutagen:setup-pushover`.** It walks you through detection → credentials → storage choice → test push in one conversational pass, handles the secrets carefully, and can gitignore `.claude/workflow.json` for you if you pick the file-storage path.
 

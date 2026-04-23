@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "generated_at": "2026-04-22T12:00:00Z",
+  "generated_by": "Shredder",
+  "pipeline_mode": "full",
+  "planning_advisories": [],
+  "slices": [
+    {
+      "id": "L2-payments-001",
+      "title": "Create payment adapter",
+      "phase": "phase_2",
+      "status": "pending",
+      "author_agent": "Bebop",
+      "layer": 2,
+      "bounded_context": "payments",
+      "target_loc": 300,
+      "objective": "Build the payment adapter after the core foundation exists.",
+      "context_to_update": "project_state.md",
+      "implementation_details": [
+        "Create the payment adapter under src/payments.",
+        "Do not start until the core foundation slice is complete."
+      ],
+      "review_required": true,
+      "attempts": 0,
+      "micro_corrections_used": 0,
+      "depends_on": [
+        "L1-core-001"
+      ],
+      "adjacent_scope_allowed": [],
+      "write_set": [
+        "src/payments/**"
+      ],
+      "traces_to": {
+        "prd": [
+          "[FR-101]"
+        ],
+        "adr": [
+          "ADR-1001"
+        ],
+        "ddd": [
+          "PaymentAggregate"
+        ],
+        "isc": [
+          "[ISC-101]"
+        ],
+        "dsd": [
+          "[DSD-101]"
+        ]
+      },
+      "verification_steps": {
+        "acceptance": "cargo test",
+        "isc_detection": "Check payment contract coverage",
+        "dsd_conformance": "Check style guide conformance"
+      },
+      "human_check_needed": {
+        "required": false,
+        "reason": "",
+        "resolved_at": null
+      }
+    }
+  ]
+}
