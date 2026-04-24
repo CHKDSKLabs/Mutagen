@@ -3,6 +3,14 @@ use clap::{Parser, Subcommand};
 use mutagen_harness::adapter::{HostKind, adapter_for, resolved_host_profile};
 use mutagen_harness::amend_scope::{AmendScopeOptions, MutationKind, amend_scope};
 use mutagen_harness::cohort::{PrepareCohortOptions, prepare_cohort};
+use mutagen_harness::cohort_reconcile::{ReconcileCohortMemberOptions, reconcile_cohort_member};
+use mutagen_harness::cohort_result::{
+    CollectCohortMemberResultOptions, collect_cohort_member_result,
+};
+use mutagen_harness::cohort_worktree::{
+    CleanupCohortWorktreesOptions, MaterializeCohortWorktreesOptions, cleanup_cohort_worktrees,
+    materialize_cohort_worktrees,
+};
 use mutagen_harness::config::load_workflow_config_file;
 use mutagen_harness::dispatch::{AuthorDispatchKind, PrepareDispatchOptions, prepare_dispatch};
 use mutagen_harness::finalize::{FinalizeSliceOptions, finalize_slice};
@@ -73,6 +81,42 @@ enum Command {
         host: HostKind,
         #[arg(long)]
         dry_run: bool,
+    },
+    ReconcileCohortMember {
+        #[arg(long, default_value = ".")]
+        workspace_root: PathBuf,
+        #[arg(long)]
+        worktree_root: PathBuf,
+        #[arg(long)]
+        slice_id: String,
+        #[arg(long)]
+        run_output: PathBuf,
+        #[arg(long = "merged-path-owner")]
+        merged_path_owners: Vec<String>,
+    },
+    CollectCohortMemberResult {
+        #[arg(long, default_value = ".")]
+        workspace_root: PathBuf,
+        #[arg(long)]
+        worktree_root: PathBuf,
+        #[arg(long)]
+        slice_id: String,
+        #[arg(long)]
+        result_path: PathBuf,
+        #[arg(long)]
+        status_path: PathBuf,
+    },
+    MaterializeCohortWorktrees {
+        #[arg(long, default_value = ".")]
+        workspace_root: PathBuf,
+        #[arg(long = "slice-id", required = true)]
+        slice_ids: Vec<String>,
+    },
+    CleanupCohortWorktrees {
+        #[arg(long, default_value = ".")]
+        workspace_root: PathBuf,
+        #[arg(long)]
+        worktree_root: PathBuf,
     },
     HostCapabilities {
         #[arg(long, value_enum, default_value_t = HostKind::Stub)]
@@ -302,6 +346,62 @@ fn main() -> Result<()> {
                 workflow_config_path: workflow_config,
                 host,
                 dry_run,
+            })?;
+
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        }
+        Command::ReconcileCohortMember {
+            workspace_root,
+            worktree_root,
+            slice_id,
+            run_output,
+            merged_path_owners,
+        } => {
+            let result = reconcile_cohort_member(ReconcileCohortMemberOptions {
+                workspace_root,
+                worktree_root,
+                slice_id,
+                run_output_path: run_output,
+                merged_path_owners,
+            })?;
+
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        }
+        Command::CollectCohortMemberResult {
+            workspace_root,
+            worktree_root,
+            slice_id,
+            result_path,
+            status_path,
+        } => {
+            let result = collect_cohort_member_result(CollectCohortMemberResultOptions {
+                workspace_root,
+                worktree_root,
+                slice_id,
+                result_path,
+                status_path,
+            })?;
+
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        }
+        Command::MaterializeCohortWorktrees {
+            workspace_root,
+            slice_ids,
+        } => {
+            let result = materialize_cohort_worktrees(MaterializeCohortWorktreesOptions {
+                workspace_root,
+                slice_ids,
+            })?;
+
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        }
+        Command::CleanupCohortWorktrees {
+            workspace_root,
+            worktree_root,
+        } => {
+            let result = cleanup_cohort_worktrees(CleanupCohortWorktreesOptions {
+                workspace_root,
+                worktree_root,
             })?;
 
             println!("{}", serde_json::to_string_pretty(&result)?);
