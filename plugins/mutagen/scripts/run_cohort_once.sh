@@ -71,258 +71,6 @@ emit_error() {
   exit 1
 }
 
-safe_file_name() {
-  local value="$1"
-  local safe=""
-  local i ch
-
-  for ((i = 0; i < ${#value}; i++)); do
-    ch="${value:i:1}"
-    case "$ch" in
-      [[:alnum:]._-])
-        safe+="$ch"
-        ;;
-      *)
-        safe+="_"
-        ;;
-    esac
-  done
-
-  printf '%s\n' "$safe"
-}
-
-append_completed_entry() {
-  local entry_json="$1"
-  COMPLETED_SLICES_JSON="$(
-    printf '%s' "$COMPLETED_SLICES_JSON" | "$JQ_BIN" -c --argjson entry "$entry_json" '. + [$entry]'
-  )"
-}
-
-apply_imports_from_reconcile() {
-  local reconcile_output="$1"
-  local worktree="$2"
-
-  while IFS=$'\t' read -r import_status import_path; do
-    [[ -z "$import_path" ]] && continue
-    import_entry "$import_status" "$import_path" "$worktree"
-  done < <(printf '%s' "$reconcile_output" | "$JQ_BIN" -r '.imports[]? | [.status, .path] | @tsv')
-}
-
-record_merged_paths_from_reconcile() {
-  local reconcile_output="$1"
-  local slice_id="$2"
-
-  while IFS= read -r import_path; do
-    [[ -z "$import_path" ]] && continue
-    MERGED_PATH_OWNERS["$import_path"]="$slice_id"
-  done < <(printf '%s' "$reconcile_output" | "$JQ_BIN" -r '.imports[]?.path')
-}
-
-sync_queue_from_reconcile() {
-  local reconcile_output="$1"
-  local slice_id status attempts micro_used karai bishop tiger micro_correction completed_at escalation_reason
-
-  slice_id="$(printf '%s' "$reconcile_output" | "$JQ_BIN" -r '.slice_id')"
-  status="$(printf '%s' "$reconcile_output" | "$JQ_BIN" -r '.queue_sync.status')"
-  attempts="$(printf '%s' "$reconcile_output" | "$JQ_BIN" -r '.queue_sync.attempts // 0')"
-  micro_used="$(printf '%s' "$reconcile_output" | "$JQ_BIN" -r '.queue_sync.micro_corrections_used // 0')"
-  karai="$(printf '%s' "$reconcile_output" | "$JQ_BIN" -r '.queue_sync.karai_structural // empty')"
-  bishop="$(printf '%s' "$reconcile_output" | "$JQ_BIN" -r '.queue_sync.bishop // empty')"
-  tiger="$(printf '%s' "$reconcile_output" | "$JQ_BIN" -r '.queue_sync.tiger_claw // empty')"
-  micro_correction="$(printf '%s' "$reconcile_output" | "$JQ_BIN" -r '.queue_sync.micro_correction // empty')"
-  completed_at="$(printf '%s' "$reconcile_output" | "$JQ_BIN" -r '.queue_sync.completed_at // empty')"
-  escalation_reason="$(printf '%s' "$reconcile_output" | "$JQ_BIN" -r '.queue_sync.escalation_reason // empty')"
-
-  local args=(
-    bash "$SCRIPT_DIR/update_queue_slice.sh"
-    --queue "$QUEUE_PATH"
-    --slicemap "$SLICEMAP_PATH"
-    --legacy "$LEGACY_PATH"
-    --slice-id "$slice_id"
-    --status "$status"
-    --attempts "$attempts"
-    --micro-corrections-used "$micro_used"
-  )
-
-  [[ -n "$karai" ]] && args+=(--karai-structural "$karai")
-  [[ -n "$bishop" ]] && args+=(--bishop "$bishop")
-  [[ -n "$tiger" ]] && args+=(--tiger-claw "$tiger")
-  [[ -n "$micro_correction" ]] && args+=(--micro-correction "$micro_correction")
-  [[ -n "$completed_at" ]] && args+=(--completed-at "$completed_at")
-  [[ -n "$escalation_reason" ]] && args+=(--escalation-reason "$escalation_reason")
-
-  local update_output
-  set +e
-  update_output="$("${args[@]}" 2>&1)"
-  local update_status=$?
-  set -e
-
-  if [[ $update_status -ne 0 ]]; then
-    emit_error "queue_sync_failed" "$update_output" "{\"slice_id\":\"$slice_id\"}"
-  fi
-}
-
-path_matches_glob() {
-  local path="$1"
-  local glob="$2"
-
-  [[ "$path" == $glob ]]
-}
-
-path_allows_shared_import() {
-  local path="$1"
-
-  [[ "$path" == ".mutagen/state/tiger-claw-latest.md" ]]
-}
-
-path_allowed_for_completed() {
-  local path="$1"
-  local slice_json="$2"
-  local slice_id safe_id
-
-  slice_id="$(printf '%s' "$slice_json" | "$JQ_BIN" -r '.slice_id')"
-  safe_id="$(safe_file_name "$slice_id")"
-
-  while IFS= read -r glob; do
-    [[ -z "$glob" ]] && continue
-    if path_matches_glob "$path" "$glob"; then
-      return 0
-    fi
-  done < <(printf '%s' "$slice_json" | "$JQ_BIN" -r '.selection_scope[]?')
-
-  case "$path" in
-    "reviews/$slice_id/"*|\
-    "slices/$slice_id/"*|\
-    ".mutagen/state/author-output/$safe_id.md"|\
-    ".mutagen/state/review-output/$safe_id.md"|\
-    ".mutagen/state/evidence/$safe_id.md"|\
-    ".mutagen/state/tiger-claw-latest.md"|\
-    ".mutagen/state/dispatch/$slice_id/"*|\
-    "tests/qa/"*)
-      return 0
-      ;;
-  esac
-
-  return 1
-}
-
-path_allowed_for_diagnostics() {
-  local path="$1"
-  local slice_id="$2"
-  local safe_id
-
-  safe_id="$(safe_file_name "$slice_id")"
-
-  case "$path" in
-    "reviews/$slice_id/"*|\
-    ".mutagen/state/author-output/$safe_id.md"|\
-    ".mutagen/state/review-output/$safe_id.md"|\
-    ".mutagen/state/evidence/$safe_id.md"|\
-    ".mutagen/state/tiger-claw-latest.md"|\
-    ".mutagen/state/dispatch/$slice_id/"*)
-      return 0
-      ;;
-  esac
-
-  return 1
-}
-
-path_differs_from_main() {
-  local path="$1"
-  local status="$2"
-  local worktree_path="$3"
-  local main_path="$4"
-
-  if [[ "$status" == "D" ]]; then
-    [[ -e "$main_path" ]]
-    return
-  fi
-
-  if [[ ! -e "$worktree_path" ]]; then
-    return 1
-  fi
-
-  if [[ ! -e "$main_path" ]]; then
-    return 0
-  fi
-
-  if cmp -s "$worktree_path" "$main_path"; then
-    return 1
-  fi
-
-  return 0
-}
-
-collect_delta_entries() {
-  local worktree="$1"
-
-  while IFS= read -r -d '' status && IFS= read -r -d '' path; do
-    printf '%s\t%s\n' "$status" "$path"
-  done < <(git -C "$worktree" diff --name-status -z --no-renames --diff-filter=ADM --relative HEAD --)
-
-  while IFS= read -r -d '' path; do
-    printf 'A\t%s\n' "$path"
-  done < <(git -C "$worktree" ls-files --others --exclude-standard -z)
-}
-
-build_import_entries() {
-  local worktree="$1"
-  local slice_json="$2"
-  local mode="$3"
-  local slice_id
-
-  slice_id="$(printf '%s' "$slice_json" | "$JQ_BIN" -r '.slice_id')"
-
-  while IFS=$'\t' read -r status path; do
-    [[ -z "$path" ]] && continue
-
-    if [[ "$mode" == "completed" ]]; then
-      path_allowed_for_completed "$path" "$slice_json" || continue
-    else
-      path_allowed_for_diagnostics "$path" "$slice_id" || continue
-    fi
-
-    if ! path_differs_from_main "$path" "$status" "$worktree/$path" "$WORKSPACE_ROOT/$path"; then
-      continue
-    fi
-
-    printf '%s\t%s\n' "$status" "$path"
-  done < <(collect_delta_entries "$worktree")
-}
-
-import_entry() {
-  local status="$1"
-  local path="$2"
-  local worktree="$3"
-
-  if [[ "$status" == "D" ]]; then
-    rm -f "$WORKSPACE_ROOT/$path"
-    return 0
-  fi
-
-  mkdir -p "$(dirname "$WORKSPACE_ROOT/$path")"
-  cp -f "$worktree/$path" "$WORKSPACE_ROOT/$path"
-}
-
-append_dispatch_log_entry() {
-  local worktree="$1"
-  local slice_id="$2"
-  local worktree_log="$worktree/.mutagen/state/dispatch-log.jsonl"
-
-  [[ -f "$worktree_log" ]] || return 0
-
-  local log_entry
-  log_entry="$(awk -v slice_id="\"slice_id\":\"$slice_id\"" 'index($0, slice_id) { line = $0 } END { print line }' "$worktree_log")"
-  [[ -n "$log_entry" ]] || return 0
-
-  mkdir -p "$(dirname "$DISPATCH_LOG_PATH")"
-  if [[ -f "$DISPATCH_LOG_PATH" ]] && rg -F "\"slice_id\":\"$slice_id\"" "$DISPATCH_LOG_PATH" >/dev/null 2>&1; then
-    return 0
-  fi
-
-  printf '%s\n' "$log_entry" >>"$DISPATCH_LOG_PATH"
-}
-
 cleanup_worktree_root() {
   [[ -n "$WORKTREE_ROOT" ]] || return 0
 
@@ -508,8 +256,6 @@ SUMMARY_ROOT="$(absolute_path "$SUMMARY_ROOT")"
 SLICEMAP_PATH="$(absolute_path "$SLICEMAP_PATH")"
 LEGACY_PATH="$(absolute_path "$LEGACY_PATH")"
 
-COMPLETED_SLICES_JSON='[]'
-
 if [[ -f "$ACTIVE_STATE_PATH" ]]; then
   existing_slice_id="$("$JQ_BIN" -r '.slice_id // empty' "$ACTIVE_STATE_PATH" 2>/dev/null || true)"
   if [[ -n "$existing_slice_id" ]]; then
@@ -638,8 +384,6 @@ if ! git -C "$WORKSPACE_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; t
     "bounded cohort execution requires a git worktree-capable repository"
 fi
 
-declare -a PIDS=()
-
 MATERIALIZE_ARGS=(
   bash "$SCRIPT_DIR/materialize_cohort_worktrees.sh"
   --workspace-root "$WORKSPACE_ROOT"
@@ -665,223 +409,109 @@ fi
 
 WORKTREE_ROOT="$(printf '%s' "$MATERIALIZE_OUTPUT" | "$JQ_BIN" -r '.worktree_root')"
 
+DISPATCH_ARGS=(
+  bash "$SCRIPT_DIR/dispatch_cohort_members.sh"
+  --workspace-root "$WORKSPACE_ROOT"
+  --runner-script "$SCRIPT_DIR/run_slice_once.sh"
+  --host "$HOST_KIND"
+)
+
 while IFS= read -r member_json; do
-  slice_id="$(printf '%s' "$member_json" | "$JQ_BIN" -r '.slice_id')"
-  worktree_path="$(printf '%s' "$member_json" | "$JQ_BIN" -r '.worktree_path')"
-  result_path="$(printf '%s' "$member_json" | "$JQ_BIN" -r '.result_path')"
-  status_path="$(printf '%s' "$member_json" | "$JQ_BIN" -r '.status_path')"
-
-  (
-    set +e
-    bash "$SCRIPT_DIR/run_slice_once.sh" \
-      --workspace-root "$worktree_path" \
-      --queue "$worktree_path/slices/queue.json" \
-      --queue-validation "$worktree_path/.mutagen/state/queue-validation.json" \
-      --workflow-config "$worktree_path/.claude/workflow.json" \
-      --active-state "$worktree_path/.mutagen/state/active-slice.json" \
-      --author-output-dir "$worktree_path/.mutagen/state/author-output" \
-      --dispatch-root "$worktree_path/.mutagen/state/dispatch" \
-      --dispatch-log "$worktree_path/.mutagen/state/dispatch-log.jsonl" \
-      --summary-root "$worktree_path/slices" \
-      --slicemap "$worktree_path/slices/slicemap.md" \
-      --legacy "$worktree_path/slices/queue.md" \
-      --host "$HOST_KIND" \
-      --slice-id "$slice_id" >"$result_path" 2>&1
-    printf '%s\n' "$?" >"$status_path"
-  ) &
-
-  PIDS+=("$!")
+  DISPATCH_ARGS+=(--member-json "$member_json")
 done < <(printf '%s' "$MATERIALIZE_OUTPUT" | "$JQ_BIN" -cr '.members[]')
 
-for pid in "${PIDS[@]}"; do
-  wait "$pid" || true
-done
+set +e
+DISPATCH_OUTPUT="$("${DISPATCH_ARGS[@]}" 2>&1)"
+DISPATCH_STATUS=$?
+set -e
 
-declare -A MERGED_PATH_OWNERS=()
+if [[ $DISPATCH_STATUS -ne 0 ]]; then
+  emit_error "cohort_member_failed" "$DISPATCH_OUTPUT"
+fi
+
+if ! printf '%s' "$DISPATCH_OUTPUT" | "$JQ_BIN" empty >/dev/null 2>&1; then
+  emit_error "cohort_member_failed" "dispatch_cohort_members.sh returned non-JSON output: $DISPATCH_OUTPUT"
+fi
+
+APPLY_ARGS=(
+  bash "$SCRIPT_DIR/apply_cohort_dispatch.sh"
+  --workspace-root "$WORKSPACE_ROOT"
+  --queue "$QUEUE_PATH"
+  --dispatch-log "$DISPATCH_LOG_PATH"
+  --slicemap "$SLICEMAP_PATH"
+  --legacy "$LEGACY_PATH"
+)
 
 while IFS= read -r member_json; do
-  slice_id="$(printf '%s' "$member_json" | "$JQ_BIN" -r '.slice_id')"
-  worktree_path="$(printf '%s' "$member_json" | "$JQ_BIN" -r '.worktree_path')"
-  result_path="$(printf '%s' "$member_json" | "$JQ_BIN" -r '.result_path')"
-  status_path="$(printf '%s' "$member_json" | "$JQ_BIN" -r '.status_path')"
-  worktree_path_json="$("$JQ_BIN" -Rn --arg value "$worktree_path" '$value')"
+  APPLY_ARGS+=(--member-json "$member_json")
+done < <(printf '%s' "$DISPATCH_OUTPUT" | "$JQ_BIN" -cr '.members[]')
 
-  set +e
-  COLLECT_OUTPUT="$(
-    bash "$SCRIPT_DIR/collect_cohort_member_result.sh" \
-      --workspace-root "$WORKSPACE_ROOT" \
-      --worktree-root "$worktree_path" \
-      --slice-id "$slice_id" \
-      --result-path "$result_path" \
-      --status-path "$status_path" 2>&1
-  )"
-  COLLECT_STATUS=$?
-  set -e
+set +e
+APPLY_OUTPUT="$("${APPLY_ARGS[@]}" 2>&1)"
+APPLY_STATUS=$?
+set -e
 
-  if [[ $COLLECT_STATUS -ne 0 ]]; then
-    emit_error \
-      "cohort_member_failed" \
-      "$COLLECT_OUTPUT" \
-      "{\"slice_id\":\"$slice_id\",\"worktree_path\":$worktree_path_json}"
-  fi
+if [[ $APPLY_STATUS -ne 0 ]]; then
+  emit_error "apply_cohort_dispatch_failed" "$APPLY_OUTPUT"
+fi
 
-  if ! printf '%s' "$COLLECT_OUTPUT" | "$JQ_BIN" empty >/dev/null 2>&1; then
-    emit_error \
-      "cohort_member_failed" \
-      "collect_cohort_member_result.sh returned non-JSON output: $COLLECT_OUTPUT" \
-      "{\"slice_id\":\"$slice_id\",\"worktree_path\":$worktree_path_json}"
-  fi
+if ! printf '%s' "$APPLY_OUTPUT" | "$JQ_BIN" empty >/dev/null 2>&1; then
+  emit_error "apply_cohort_dispatch_failed" "apply_cohort_dispatch.sh returned non-JSON output: $APPLY_OUTPUT"
+fi
 
-  COLLECT_STATUS_KIND="$(printf '%s' "$COLLECT_OUTPUT" | "$JQ_BIN" -r '.status')"
-  if [[ "$COLLECT_STATUS_KIND" == "failed" ]]; then
-    RUN_OUTPUT="$(printf '%s' "$COLLECT_OUTPUT" | "$JQ_BIN" -r '.message')"
+APPLY_STATUS_KIND="$(printf '%s' "$APPLY_OUTPUT" | "$JQ_BIN" -r '.status')"
+
+case "$APPLY_STATUS_KIND" in
+  completed)
     "$JQ_BIN" -n \
-      --arg slice_id "$slice_id" \
-      --arg worktree_path "$worktree_path" \
-      --arg message "$RUN_OUTPUT" \
-      --argjson completed_slices "$COMPLETED_SLICES_JSON" \
+      --argjson prepare_cohort "$PREPARE_OUTPUT" \
+      --argjson applied "$APPLY_OUTPUT" \
+      '{
+        ok: true,
+        status: "completed",
+        mode: "bounded_cohort",
+        cohort_size: $applied.completed_count,
+        completed_count: $applied.completed_count,
+        completed_slices: $applied.completed_slices,
+        completion_markers: $applied.completion_markers,
+        prepare_cohort: $prepare_cohort
+      }'
+    exit 0
+    ;;
+  escalated)
+    "$JQ_BIN" -n \
+      --argjson applied "$APPLY_OUTPUT" \
+      '{
+        ok: true,
+        status: "escalated",
+        slice_id: $applied.slice_id,
+        worktree_path: $applied.worktree_path,
+        completed_count: $applied.completed_count,
+        completed_slices: $applied.completed_slices,
+        completion_markers: $applied.completion_markers,
+        terminal: $applied.terminal
+      }
+      + (if ($applied.stage // null) != null then { stage: $applied.stage } else {} end)
+      + (if ($applied.stop_condition // null) != null then { stop_condition: $applied.stop_condition } else {} end)
+      + (if ($applied.conflicting_slice_id // null) != null then { conflicting_slice_id: $applied.conflicting_slice_id } else {} end)
+      + (if ($applied.conflicting_path // null) != null then { conflicting_path: $applied.conflicting_path } else {} end)'
+    ;;
+  failed)
+    "$JQ_BIN" -n \
+      --argjson applied "$APPLY_OUTPUT" \
       '{
         ok: false,
         error: "cohort_member_failed",
-        slice_id: $slice_id,
-        worktree_path: $worktree_path,
-        completed_count: ($completed_slices | length),
-        completed_slices: $completed_slices,
-        completion_markers: ($completed_slices | map(.completion_marker)),
-        message: $message
+        slice_id: $applied.slice_id,
+        worktree_path: $applied.worktree_path,
+        completed_count: $applied.completed_count,
+        completed_slices: $applied.completed_slices,
+        completion_markers: $applied.completion_markers,
+        message: $applied.message
       }'
     exit 1
-  fi
-
-  RUN_OUTPUT="$(printf '%s' "$COLLECT_OUTPUT" | "$JQ_BIN" -c '.run_output')"
-  MEMBER_STATUS="$(printf '%s' "$COLLECT_OUTPUT" | "$JQ_BIN" -r '.member_status')"
-
-  MERGED_OWNER_ARGS=()
-  for merged_path in "${!MERGED_PATH_OWNERS[@]}"; do
-    MERGED_OWNER_ARGS+=(--merged-path-owner "$merged_path=${MERGED_PATH_OWNERS[$merged_path]}")
-  done
-
-  set +e
-  RECONCILE_OUTPUT="$(
-    bash "$SCRIPT_DIR/reconcile_cohort_member.sh" \
-      --workspace-root "$WORKSPACE_ROOT" \
-      --worktree-root "$worktree_path" \
-      --slice-id "$slice_id" \
-      --run-output "$result_path" \
-      "${MERGED_OWNER_ARGS[@]}" 2>&1
-  )"
-  RECONCILE_STATUS_CODE=$?
-  set -e
-
-  if [[ $RECONCILE_STATUS_CODE -ne 0 ]]; then
-    emit_error \
-      "reconcile_cohort_member_failed" \
-      "$RECONCILE_OUTPUT" \
-      "{\"slice_id\":\"$slice_id\",\"worktree_path\":$worktree_path_json}"
-  fi
-
-  if ! printf '%s' "$RECONCILE_OUTPUT" | "$JQ_BIN" empty >/dev/null 2>&1; then
-    emit_error \
-      "reconcile_cohort_member_failed" \
-      "reconcile_cohort_member.sh returned non-JSON output: $RECONCILE_OUTPUT" \
-      "{\"slice_id\":\"$slice_id\",\"worktree_path\":$worktree_path_json}"
-  fi
-
-  RECONCILE_STATUS="$(printf '%s' "$RECONCILE_OUTPUT" | "$JQ_BIN" -r '.status')"
-
-  case "$RECONCILE_STATUS" in
-    completed)
-      apply_imports_from_reconcile "$RECONCILE_OUTPUT" "$worktree_path"
-      set +e
-      STATE_UPDATE_OUTPUT="$(
-        bash "$SCRIPT_DIR/apply_state_update.sh" \
-          --workspace-root "$WORKSPACE_ROOT" \
-          --queue "$QUEUE_PATH" \
-          --slice-id "$slice_id" \
-          --author-output "$(printf '%s' "$RECONCILE_OUTPUT" | "$JQ_BIN" -r '.author_output_path')" 2>&1
-      )"
-      STATE_UPDATE_STATUS=$?
-      set -e
-
-      if [[ $STATE_UPDATE_STATUS -ne 0 ]]; then
-        emit_error \
-          "state_update_apply_failed" \
-          "$STATE_UPDATE_OUTPUT" \
-          "{\"slice_id\":\"$slice_id\",\"worktree_path\":$worktree_path_json}"
-      fi
-
-      sync_queue_from_reconcile "$RECONCILE_OUTPUT"
-      append_dispatch_log_entry "$worktree_path" "$slice_id"
-      record_merged_paths_from_reconcile "$RECONCILE_OUTPUT" "$slice_id"
-      completed_entry="$(printf '%s' "$RECONCILE_OUTPUT" | "$JQ_BIN" -c '.completed_entry')"
-      append_completed_entry "$completed_entry"
-      ;;
-    escalated)
-      apply_imports_from_reconcile "$RECONCILE_OUTPUT" "$worktree_path"
-      sync_queue_from_reconcile "$RECONCILE_OUTPUT"
-      "$JQ_BIN" -n \
-        --arg slice_id "$slice_id" \
-        --arg worktree_path "$worktree_path" \
-        --argjson completed_slices "$COMPLETED_SLICES_JSON" \
-        --argjson terminal "$RUN_OUTPUT" \
-        '{
-          ok: true,
-          status: "escalated",
-          slice_id: $slice_id,
-          worktree_path: $worktree_path,
-          completed_count: ($completed_slices | length),
-          completed_slices: $completed_slices,
-          completion_markers: ($completed_slices | map(.completion_marker)),
-              terminal: $terminal
-            }'
-      exit 0
-      ;;
-    merge_conflict)
-      apply_imports_from_reconcile "$RECONCILE_OUTPUT" "$worktree_path"
-      sync_queue_from_reconcile "$RECONCILE_OUTPUT"
-
-      "$JQ_BIN" -n \
-        --arg slice_id "$slice_id" \
-        --arg conflicting_slice_id "$(printf '%s' "$RECONCILE_OUTPUT" | "$JQ_BIN" -r '.conflicting_slice_id')" \
-        --arg conflicting_path "$(printf '%s' "$RECONCILE_OUTPUT" | "$JQ_BIN" -r '.conflicting_path')" \
-        --arg worktree_path "$worktree_path" \
-        --argjson completed_slices "$COMPLETED_SLICES_JSON" \
-        --argjson terminal "$RUN_OUTPUT" \
-        '{
-          ok: true,
-          status: "escalated",
-          stage: "cohort_merge",
-          stop_condition: "merge_conflict",
-          slice_id: $slice_id,
-          conflicting_slice_id: $conflicting_slice_id,
-          conflicting_path: $conflicting_path,
-          worktree_path: $worktree_path,
-          completed_count: ($completed_slices | length),
-          completed_slices: $completed_slices,
-          completion_markers: ($completed_slices | map(.completion_marker)),
-          terminal: $terminal
-        }'
-      exit 0
-      ;;
-    *)
-      emit_error \
-        "cohort_member_failed" \
-        "reconcile_cohort_member.sh returned unsupported status `$RECONCILE_STATUS`" \
-        "{\"slice_id\":\"$slice_id\",\"worktree_path\":$worktree_path_json}"
-      ;;
-  esac
-done < <(printf '%s' "$MATERIALIZE_OUTPUT" | "$JQ_BIN" -cr '.members[]')
-
-"$JQ_BIN" -n \
-  --argjson prepare_cohort "$PREPARE_OUTPUT" \
-  --argjson completed_slices "$COMPLETED_SLICES_JSON" \
-  '{
-    ok: true,
-    status: "completed",
-    mode: "bounded_cohort",
-    cohort_size: ($completed_slices | length),
-    completed_count: ($completed_slices | length),
-    completed_slices: $completed_slices,
-    completion_markers: ($completed_slices | map(.completion_marker)),
-    prepare_cohort: $prepare_cohort
-  }'
+    ;;
+  *)
+    emit_error "apply_cohort_dispatch_failed" "apply_cohort_dispatch.sh returned unsupported status '$APPLY_STATUS_KIND'"
+    ;;
+esac

@@ -222,7 +222,7 @@ if [[ -f "$ACTIVE_STATE_PATH" ]]; then
     CURRENT_SLICE_ID="$existing_slice_id"
     emit_error \
       "active_slice_present" \
-      "active-slice.json already exists for `$existing_slice_id`. Resolve or clear the current slice before starting another."
+      "active-slice.json already exists for '$existing_slice_id'. Resolve or clear the current slice before starting another."
   fi
 
   emit_error \
@@ -287,7 +287,7 @@ case "$PREPARE_RESULT_STATUS" in
     CURRENT_SLICE_ID="$(printf '%s' "$PREPARE_OUTPUT" | "$JQ_BIN" -r '.slice_id')"
     ;;
   *)
-    emit_error "prepare_slice_failed" "slice preparation returned unsupported status `$PREPARE_RESULT_STATUS`"
+    emit_error "prepare_slice_failed" "slice preparation returned unsupported status '$PREPARE_RESULT_STATUS'"
     ;;
 esac
 
@@ -314,7 +314,7 @@ LOOP_GUARD=0
 while true; do
   LOOP_GUARD=$((LOOP_GUARD + 1))
   if [[ $LOOP_GUARD -gt $MAX_LOOPS ]]; then
-    emit_error "loop_guard_exceeded" "slice runner exceeded its retry guard while processing `$CURRENT_SLICE_ID`"
+    emit_error "loop_guard_exceeded" "slice runner exceeded its retry guard while processing '$CURRENT_SLICE_ID'"
   fi
 
   AUTHOR_TRANSITION_ARGS=(
@@ -348,6 +348,7 @@ while true; do
     --dispatch-root "$DISPATCH_ROOT"
     --slicemap "$SLICEMAP_PATH"
     --legacy "$LEGACY_PATH"
+    --host "$HOST_KIND"
     --slice-id "$CURRENT_SLICE_ID"
   )
 
@@ -475,6 +476,7 @@ while true; do
       --dispatch-root "$DISPATCH_ROOT" \
       --slicemap "$SLICEMAP_PATH" \
       --legacy "$LEGACY_PATH" \
+      --host "$HOST_KIND" \
       --slice-id "$CURRENT_SLICE_ID"
   )"
 
@@ -543,7 +545,7 @@ while true; do
       exit 0
       ;;
     *)
-      emit_error "review_decision_failed" "review-decision returned unsupported action `$REVIEW_ACTION`"
+      emit_error "review_decision_failed" "review-decision returned unsupported action '$REVIEW_ACTION'"
       ;;
   esac
 done

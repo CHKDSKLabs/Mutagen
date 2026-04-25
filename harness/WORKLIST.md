@@ -2,14 +2,14 @@
 
 ## Phase 0: draw the boundary
 
-- [ ] Inventory every rule that currently exists only in skill or command prose.
+- [x] Inventory every rule that currently exists only in skill or command prose.
 - [x] Separate host-specific behavior from canonical runtime behavior.
 - [x] Define the runtime state machine for `elicit`, `slice`, `execute-next`, and `amend-scope`.
 - [x] Define the dual-artifact boundary between human slicemap and canonical queue JSON.
 
 ## Phase 1: make the engine real
 
-- [ ] Define schemas for queue, active slice, evidence bundle, gate verdict, dispatch log, and summary.
+- [x] Define schemas for queue, active slice, evidence bundle, gate verdict, dispatch log, and summary.
 - [x] Implement ready-slice selection with `depends_on`.
 - [x] Implement stage transitions and retry accounting.
 - [x] Implement active-slice stage rotation and counter sync.
@@ -37,8 +37,8 @@
 ## Phase 3: make it portable
 
 - [x] Move Claude and Codex integration behind adapters.
-- [ ] Remove core orchestration logic from skill and command markdown.
-- [ ] Make the docs describe the runtime we actually ship.
+- [x] Remove core orchestration logic from skill and command markdown.
+- [x] Make the docs describe the runtime we actually ship.
 
 ## Immediate next slices
 

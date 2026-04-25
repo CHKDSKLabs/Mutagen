@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 fn run_execute_next_drains_a_bounded_parallel_cohort() {
     let workspace = FixtureWorkspace::copy("basic_ready");
     workspace.promote_two_slice_cohort();
-    workspace.write_text("fake-codex.sh", fake_codex_script_body());
+    workspace.write_text("fake-claude.sh", fake_claude_script_body());
     workspace.init_git_repo();
     let result = run_execute_next_smoke(&workspace, &[]);
     assert_eq!(result["status"], "queue_clear");
@@ -84,7 +84,7 @@ fn run_execute_next_drains_a_bounded_parallel_cohort() {
 fn run_execute_next_stops_after_a_later_cohort_member_escalates() {
     let workspace = FixtureWorkspace::copy("basic_ready");
     workspace.promote_two_slice_cohort();
-    workspace.write_text("fake-codex.sh", fake_codex_script_body());
+    workspace.write_text("fake-claude.sh", fake_claude_script_body());
     workspace.init_git_repo();
 
     let result = run_execute_next_smoke(&workspace, &[("FAIL_STRUCTURAL_SLICE", "L2-orders-002")]);
@@ -155,7 +155,7 @@ fn run_execute_next_stops_after_a_later_cohort_member_escalates() {
 fn run_execute_next_escalates_on_cohort_merge_conflict() {
     let workspace = FixtureWorkspace::copy("basic_ready");
     workspace.promote_two_slice_cohort();
-    workspace.write_text("fake-codex.sh", fake_codex_script_body());
+    workspace.write_text("fake-claude.sh", fake_claude_script_body());
     workspace.init_git_repo();
 
     let result = run_execute_next_smoke(&workspace, &[("SHARED_QA_CONFLICT", "1")]);
@@ -377,7 +377,7 @@ fn run_execute_next_smoke(workspace: &FixtureWorkspace, env_exports: &[(&str, &s
 
     let repo_root_wsl = to_wsl_path(&repo_root);
     let workspace_wsl = to_wsl_path(&workspace.root);
-    let fake_codex_wsl = to_wsl_path(&workspace.root.join("fake-codex.sh"));
+    let fake_claude_wsl = to_wsl_path(&workspace.root.join("fake-claude.sh"));
     let queue_validation_wsl = format!("{workspace_wsl}/.mutagen/state/queue-validation.json");
     let result_path = workspace.root.join("run_execute_next.json");
     let env_setup = if env_exports.is_empty() {
@@ -393,15 +393,15 @@ fn run_execute_next_smoke(workspace: &FixtureWorkspace, env_exports: &[(&str, &s
     let smoke_script = format!(
         r#"
 set -euo pipefail
-fake_codex="{fake_codex_wsl}"
-chmod +x "\$fake_codex"
+fake_claude="{fake_claude_wsl}"
+chmod +x "$fake_claude"
 unset FAIL_STRUCTURAL_SLICE SHARED_QA_CONFLICT || true
 {env_setup}
 
 cd "{repo_root_wsl}"
 mkdir -p "{workspace_wsl}/.mutagen/state"
 bash plugins/mutagen/scripts/validate_queue.sh "{workspace_wsl}/slices/queue.json" > "{queue_validation_wsl}"
-CODEX_BIN="\$fake_codex" bash plugins/mutagen/scripts/run_execute_next.sh \
+CLAUDE_BIN="$fake_claude" bash plugins/mutagen/scripts/run_execute_next.sh \
   --workspace-root "{workspace_wsl}" \
   --queue "{workspace_wsl}/slices/queue.json" \
   --queue-validation "{queue_validation_wsl}" \
@@ -415,7 +415,7 @@ CODEX_BIN="\$fake_codex" bash plugins/mutagen/scripts/run_execute_next.sh \
     workspace.read_json("run_execute_next.json")
 }
 
-fn fake_codex_script_body() -> &'static str {
+fn fake_claude_script_body() -> &'static str {
     r#"#!/usr/bin/env bash
 set -euo pipefail
 
@@ -424,12 +424,8 @@ prompt=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    exec|--skip-git-repo-check)
+    --print)
       shift
-      ;;
-    --profile)
-      profile="$2"
-      shift 2
       ;;
     *)
       prompt="$1"
@@ -438,6 +434,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+persona="$(printf '%s' "$prompt" | sed -n 's/^# You are //p' | head -n1)"
+profile="$(printf '%s' "$persona" | tr '[:upper:]' '[:lower:]')"
 slice_id="$(printf '%s' "$prompt" | grep -o 'L[0-9]-[A-Za-z0-9-]\+' | head -n1)"
 
 case "$profile" in
@@ -561,7 +559,7 @@ case "$profile" in
     printf 'Tiger Claw clean for %s\n' "$slice_id"
     ;;
   *)
-    echo "unsupported fake codex profile: $profile" >&2
+    echo "unsupported fake claude persona profile: $profile" >&2
     exit 1
     ;;
 esac

@@ -9,6 +9,7 @@ AUTHOR_OUTPUT_DIR=".mutagen/state/author-output"
 DISPATCH_ROOT=".mutagen/state/dispatch"
 SLICEMAP_PATH="slices/slicemap.md"
 LEGACY_PATH="slices/queue.md"
+HOST_KIND="codex"
 SLICE_ID=""
 QA_REPORT_PATH=""
 LATEST_QA_REPORT_PATH=""
@@ -25,6 +26,7 @@ Usage:
                     [--dispatch-root PATH]
                     [--slicemap PATH]
                     [--legacy PATH]
+                    [--host HOST]
                     [--qa-report PATH]
                     [--latest-qa-report PATH]
                     [--dispatch-kind initial|retry|micro_correction]
@@ -46,24 +48,6 @@ resolve_jq() {
   return 1
 }
 
-resolve_cargo() {
-  if command -v cargo >/dev/null 2>&1; then
-    command -v cargo
-    return 0
-  fi
-
-  if [ -x "$HOME/.cargo/bin/cargo" ]; then
-    printf '%s\n' "$HOME/.cargo/bin/cargo"
-    return 0
-  fi
-
-  if command -v cargo.exe >/dev/null 2>&1; then
-    command -v cargo.exe
-    return 0
-  fi
-
-  return 1
-}
 
 absolute_path() {
   local path="$1"
@@ -113,6 +97,11 @@ while [[ $# -gt 0 ]]; do
       LEGACY_PATH="$2"
       shift 2
       ;;
+    --host)
+      [[ $# -ge 2 ]] || usage
+      HOST_KIND="$2"
+      shift 2
+      ;;
     --slice-id)
       [[ $# -ge 2 ]] || usage
       SLICE_ID="$2"
@@ -150,33 +139,8 @@ JQ_BIN="$(resolve_jq)" || {
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-MANIFEST_PATH="$REPO_ROOT/harness/Cargo.toml"
 MUTAGEN_ROOT="${MUTAGEN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 export MUTAGEN_ROOT
-
-if [[ ! -f "$MANIFEST_PATH" ]]; then
-  "$JQ_BIN" -n \
-    --arg manifest "$MANIFEST_PATH" \
-    '{
-      ok: false,
-      reason: "dispatch_stage_unavailable",
-      message: ("mutagen harness manifest not found at " + $manifest)
-    }'
-  exit 1
-fi
-
-CARGO_BIN="$(resolve_cargo)" || {
-  "$JQ_BIN" -n \
-    --arg slice_id "$SLICE_ID" \
-    '{
-      ok: false,
-      reason: "dispatch_stage_unavailable",
-      slice_id: $slice_id,
-      message: "cargo not found on PATH"
-    }'
-  exit 1
-}
 
 WORKSPACE_ROOT="$(absolute_path "$WORKSPACE_ROOT")"
 QUEUE_PATH="$(absolute_path "$QUEUE_PATH")"
@@ -187,10 +151,7 @@ SLICEMAP_PATH="$(absolute_path "$SLICEMAP_PATH")"
 LEGACY_PATH="$(absolute_path "$LEGACY_PATH")"
 
 prepare_args=(
-  "$CARGO_BIN" run
-  --quiet
-  --manifest-path "$MANIFEST_PATH"
-  --
+  bash "$SCRIPT_DIR/harness_runtime.sh"
   prepare-dispatch
   --workspace-root "$WORKSPACE_ROOT"
   --queue "$QUEUE_PATH"
@@ -251,7 +212,7 @@ PREPARED_LATEST_QA_REPORT_PATH="$(printf '%s' "$PREPARE_OUTPUT" | "$JQ_BIN" -r '
 mkdir -p "$(dirname "$STDOUT_CAPTURE_PATH")"
 
 set +e
-bash "$MUTAGEN_ROOT/bin/agent.sh" "$AGENT_NAME" "$(cat "$PROMPT_PATH")" >"$STDOUT_CAPTURE_PATH" 2>&1
+bash "$MUTAGEN_ROOT/bin/agent.sh" --host "$HOST_KIND" "$AGENT_NAME" "$(cat "$PROMPT_PATH")" >"$STDOUT_CAPTURE_PATH" 2>&1
 AGENT_STATUS=$?
 set -e
 

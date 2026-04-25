@@ -25,7 +25,198 @@ For local development, point Claude Code at a checkout:
 claude --plugin-dir /path/to/agentic_design_workflow/plugins/mutagen
 ```
 
-Requires `bash`, `jq`, and `git` on PATH for the shell helpers. The slice-authoring flow, host-profile resolution, queue mutation helpers, active-slice stage rotation, Stage 2 structural gate, and final slice closure delegate to the Rust harness, so `cargo` and `rustc` must be available on PATH unless you replace those steps with a prebuilt harness binary. Without `jq` the scope guard fails open with a warning; set `STRICT_GUARD=1` to fail closed instead.
+Requires `bash`, `jq`, and `git` on PATH for the shell helpers. The slice-authoring flow, host-profile resolution, queue mutation helpers, active-slice stage rotation, Stage 2 structural gate, and final slice closure delegate to the Rust harness.
+
+The plugin now resolves the harness in this order:
+
+1. `MUTAGEN_HARNESS_BIN`, when set to an executable.
+2. `plugins/mutagen/bin/mutagen-harness` or `mutagen-harness.exe`, when packaged with the plugin.
+3. `cargo run --manifest-path harness/Cargo.toml` as a source-checkout fallback.
+4. `mutagen-harness` on `PATH`.
+
+For local packaging, build and copy the harness binary into the plugin:
+
+```bash
+bash plugins/mutagen/scripts/build_harness_binary.sh --release
+```
+
+With a packaged binary, end users do not need `cargo` or `rustc`. Without a packaged binary, development checkouts still need Rust installed. Without `jq` the scope guard fails open with a warning; set `STRICT_GUARD=1` to fail closed instead.
+
+Start a new app-builder workspace with:
+
+```bash
+bash plugins/mutagen/scripts/project.sh init \
+  --name crew-scheduler \
+  --stack nextjs-postgres \
+  --design-system shadcn
+```
+
+Check the capsule and required artifacts:
+
+```bash
+bash plugins/mutagen/scripts/project.sh inspect
+```
+
+Apply the selected stack blueprint:
+
+```bash
+bash plugins/mutagen/scripts/project.sh blueprints
+bash plugins/mutagen/scripts/project.sh apply-blueprint
+```
+
+Current stack IDs include `nextjs-postgres`, `vite-express-sqlite`,
+`fastapi-react`, `aspnet-blazor`, `cloudflare-worker`, and `rust-bevy`.
+
+Run a blueprint command through the capsule:
+
+Create a project in one pass:
+
+```bash
+bash plugins/mutagen/scripts/project.sh create --name crew-scheduler --stack vite-express-sqlite --design-system plain-css
+```
+
+`create` runs init, blueprint application, and scaffold materialization.
+
+Check local stack prerequisites:
+
+```bash
+bash plugins/mutagen/scripts/project.sh doctor
+```
+
+Summarize project status:
+
+```bash
+bash plugins/mutagen/scripts/project.sh status
+```
+
+Repair missing scaffold files:
+
+```bash
+bash plugins/mutagen/scripts/project.sh repair --scaffold
+```
+
+Queue a feature intent:
+
+```bash
+bash plugins/mutagen/scripts/project.sh add-feature --title "Add due dates" --description "Tasks should include optional due dates."
+```
+
+List queued feature intents:
+
+```bash
+bash plugins/mutagen/scripts/project.sh features
+```
+
+Plan a queued feature:
+
+```bash
+bash plugins/mutagen/scripts/project.sh plan-feature --feature-id feature-...
+```
+
+Inspect feature readiness:
+
+```bash
+bash plugins/mutagen/scripts/project.sh feature-status --feature-id feature-...
+```
+
+Slice a planned feature:
+
+```bash
+bash plugins/mutagen/scripts/project.sh slice-feature --feature-id feature-...
+```
+
+Enqueue a sliced feature:
+
+```bash
+bash plugins/mutagen/scripts/project.sh enqueue-feature --feature-id feature-...
+```
+
+Run full feature intake:
+
+```bash
+bash plugins/mutagen/scripts/project.sh feature-flow --title "Add due dates" --description "Tasks should include optional due dates."
+```
+
+Prepare the next feature slice:
+
+```bash
+bash plugins/mutagen/scripts/project.sh execute-feature --feature-id feature-...
+```
+
+Inspect feature progress:
+
+```bash
+bash plugins/mutagen/scripts/project.sh feature-progress --feature-id feature-...
+```
+
+Load the dashboard snapshot:
+
+```bash
+bash plugins/mutagen/scripts/project.sh dashboard
+```
+
+Serve the local dashboard:
+
+```bash
+bash plugins/mutagen/scripts/project.sh dashboard-serve --port 7788
+```
+
+The dashboard now includes preview controls plus setup/test/build/verify actions,
+so it can act like a small project console instead of just a feature queue view.
+
+For local development deployment, prefer the wrappers:
+
+```bash
+bash plugins/mutagen/scripts/doctor_dev.sh --workspace-root /path/to/workspace
+bash plugins/mutagen/scripts/dashboard_dev.sh --workspace-root /path/to/workspace
+bash plugins/mutagen/scripts/dev_console.sh --workspace-root /path/to/workspace
+```
+
+That path checks the workspace, builds a packaged harness binary when needed,
+and launches the dashboard with the defaults from `harness/config/dev.toml`.
+
+Inside the plugin command surface, use `/mutagen:dashboard` as the one obvious
+move for launching the local console.
+
+Run a blueprint command through the capsule:
+
+```bash
+bash plugins/mutagen/scripts/project.sh run-command --kind test --dry-run
+bash plugins/mutagen/scripts/project.sh run-command --kind test
+```
+
+Materialize the selected stack:
+
+```bash
+bash plugins/mutagen/scripts/project.sh scaffold
+```
+
+`scaffold` currently writes runnable `vite-express-sqlite` and `rust-bevy`
+starters, and requires `--force` before replacing existing files.
+
+Verify the generated project:
+
+```bash
+bash plugins/mutagen/scripts/project.sh verify-generated
+```
+
+This runs inspect, doctor, setup, test, build, preview-start, preview-check, and
+preview-stop, then returns one JSON result for the whole loop.
+
+Inspect the preview target:
+
+```bash
+bash plugins/mutagen/scripts/project.sh preview-plan
+```
+
+Manage the preview process:
+
+```bash
+bash plugins/mutagen/scripts/project.sh preview-start
+bash plugins/mutagen/scripts/project.sh preview-status
+bash plugins/mutagen/scripts/project.sh preview-check
+bash plugins/mutagen/scripts/project.sh preview-stop
+```
 
 ## The five upstream documents
 
@@ -111,6 +302,11 @@ Namespaced under `mutagen:`:
 | `/mutagen:amend-scope` | Evaluate a mid-slice amendment request through the harness `amend-scope` runtime. The runtime enforces stage fidelity, active-agent domain, and global deny rules, rewrites `.mutagen/state/active-slice.json` on ALLOW, appends `.mutagen/state/amendments.jsonl` on both ALLOW and DENY, and returns the canonical rationale / next-step payload. |
 | `/mutagen:status` | Read-only report on upstream-document status, April's Readiness Brief, Shredder's Validation Report, harness queue-validation state, queue progress, active slice, latest scope-violation artifact, heartbeat telemetry, gate verdicts, and open escalations. |
 | `/mutagen:setup-pushover` | First-run wizard for Pushover notifications — detects existing config, collects user key + app token, lets you pick env-var or `workflow.json` storage, optionally configures `quiet_events`, and sends a test push. |
+
+Stage dispatch is host-aware. `--host codex` runs personas through `codex exec`
+using `CODEX_BIN` when set; `--host claude` runs them through `claude --print`
+using `CLAUDE_BIN` when set. Set `MUTAGEN_AGENT_LAUNCHER` to replace the
+launcher for either host or for a future host adapter.
 
 Typical rhythm on a new project:
 

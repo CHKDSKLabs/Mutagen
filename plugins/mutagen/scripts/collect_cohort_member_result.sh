@@ -4,24 +4,6 @@ set -euo pipefail
 
 HARNESS_ARGS=()
 
-resolve_cargo() {
-  if command -v cargo >/dev/null 2>&1; then
-    command -v cargo
-    return 0
-  fi
-
-  if [ -x "$HOME/.cargo/bin/cargo" ]; then
-    printf '%s\n' "$HOME/.cargo/bin/cargo"
-    return 0
-  fi
-
-  if command -v cargo.exe >/dev/null 2>&1; then
-    command -v cargo.exe
-    return 0
-  fi
-
-  return 1
-}
 
 resolve_jq() {
   if command -v jq >/dev/null 2>&1; then
@@ -74,19 +56,11 @@ while [[ $# -gt 0 ]]; do
 done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-MANIFEST_PATH="$REPO_ROOT/harness/Cargo.toml"
-
-if [[ ! -f "$MANIFEST_PATH" ]]; then
-  emit_error "collect_cohort_member_result_unavailable" "mutagen harness manifest not found"
-fi
-
-CARGO_BIN="$(resolve_cargo)" || emit_error "collect_cohort_member_result_unavailable" "cargo not found on PATH"
 JQ_BIN="$(resolve_jq)" || emit_error "collect_cohort_member_result_unavailable" "jq not found on PATH"
 
 set +e
 OUTPUT="$(
-  "$CARGO_BIN" run --quiet --manifest-path "$MANIFEST_PATH" -- collect-cohort-member-result "${HARNESS_ARGS[@]}" 2>&1
+  bash "$SCRIPT_DIR/harness_runtime.sh" collect-cohort-member-result "${HARNESS_ARGS[@]}" 2>&1
 )"
 STATUS=$?
 set -e

@@ -27,24 +27,6 @@ resolve_jq() {
   return 1
 }
 
-resolve_cargo() {
-  if command -v cargo >/dev/null 2>&1; then
-    command -v cargo
-    return 0
-  fi
-
-  if [ -x "$HOME/.cargo/bin/cargo" ]; then
-    printf '%s\n' "$HOME/.cargo/bin/cargo"
-    return 0
-  fi
-
-  if command -v cargo.exe >/dev/null 2>&1; then
-    command -v cargo.exe
-    return 0
-  fi
-
-  return 1
-}
 
 JQ_BIN="$(resolve_jq)" || {
   printf '{"ok":false,"error":"validator_unavailable","message":"jq not found on PATH"}\n'
@@ -52,34 +34,6 @@ JQ_BIN="$(resolve_jq)" || {
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-MANIFEST_PATH="$REPO_ROOT/harness/Cargo.toml"
-
-if [[ ! -f "$MANIFEST_PATH" ]]; then
-  "$JQ_BIN" -n \
-    --arg queue "$QUEUE_PATH" \
-    --arg manifest "$MANIFEST_PATH" \
-    '{
-      ok: false,
-      error: "validator_unavailable",
-      queue: $queue,
-      message: ("mutagen harness manifest not found at " + $manifest)
-    }'
-  exit 1
-fi
-
-CARGO_BIN="$(resolve_cargo)" || {
-  "$JQ_BIN" -n \
-    --arg queue "$QUEUE_PATH" \
-    '{
-      ok: false,
-      error: "validator_unavailable",
-      queue: $queue,
-      message: "cargo not found on PATH"
-    }'
-  exit 1
-}
-
 if [[ "$QUEUE_PATH" != /* ]]; then
   QUEUE_PATH="$(pwd)/$QUEUE_PATH"
 fi
@@ -115,7 +69,7 @@ augment_report() {
 
 set +e
 VALIDATOR_OUTPUT="$(
-  "$CARGO_BIN" run --quiet --manifest-path "$MANIFEST_PATH" -- validate-queue --queue "$QUEUE_PATH" 2>&1
+  bash "$SCRIPT_DIR/harness_runtime.sh" validate-queue --queue "$QUEUE_PATH" 2>&1
 )"
 VALIDATOR_STATUS=$?
 set -e

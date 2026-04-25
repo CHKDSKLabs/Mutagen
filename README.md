@@ -65,7 +65,7 @@ See [`plugins/mutagen/README.md`](plugins/mutagen/README.md) for the full story.
 │       ├── commands/                   # 6 Claude slash commands
 │       ├── skills/                     # 6 Codex skills ($mutagen-*)
 │       │   └── <skill>/SKILL.md + agents/openai.yaml
-│       ├── bin/                        # agent.sh / agent.ps1 / agents-parallel.sh — persona-injecting codex exec wrappers
+│       ├── bin/                        # agent.sh / agent.ps1 / agents-parallel.sh — host-aware persona launchers
 │       ├── hooks/                      # Claude Code PreToolUse + PostToolUse
 │       ├── scripts/                    # guard.sh, counter.sh, heartbeat.sh, render_queue.sh, notify.sh
 │       ├── templates/                  # PRD / ADR / DDD / ISC / DSD templates

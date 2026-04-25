@@ -1,0 +1,9 @@
+bind = "127.0.0.1"
+port = 7799
+host = "stub"
+build_profile = "debug"
+
+[ui]
+build_log_limit = 12
+preview_log_limit = 80
+activity_feed_limit = 16

@@ -27,24 +27,6 @@ resolve_jq() {
   return 1
 }
 
-resolve_cargo() {
-  if command -v cargo >/dev/null 2>&1; then
-    command -v cargo
-    return 0
-  fi
-
-  if [ -x "$HOME/.cargo/bin/cargo" ]; then
-    printf '%s\n' "$HOME/.cargo/bin/cargo"
-    return 0
-  fi
-
-  if command -v cargo.exe >/dev/null 2>&1; then
-    command -v cargo.exe
-    return 0
-  fi
-
-  return 1
-}
 
 absolute_path() {
   local path="$1"
@@ -84,42 +66,11 @@ JQ_BIN="$(resolve_jq)" || {
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-MANIFEST_PATH="$REPO_ROOT/harness/Cargo.toml"
-
-if [[ ! -f "$MANIFEST_PATH" ]]; then
-  "$JQ_BIN" -n \
-    --arg manifest "$MANIFEST_PATH" \
-    '{
-      ok: false,
-      reason: "host_profile_unavailable",
-      message: ("mutagen harness manifest not found at " + $manifest)
-    }'
-  exit 1
-fi
-
-CARGO_BIN="$(resolve_cargo)" || {
-  "$JQ_BIN" -n \
-    --arg workflow_config "$WORKFLOW_CONFIG_PATH" \
-    --arg host "$HOST_KIND" \
-    '{
-      ok: false,
-      reason: "host_profile_unavailable",
-      workflow_config: $workflow_config,
-      host: $host,
-      message: "cargo not found on PATH"
-    }'
-  exit 1
-}
-
 WORKFLOW_CONFIG_PATH="$(absolute_path "$WORKFLOW_CONFIG_PATH")"
 
 set +e
 PROFILE_OUTPUT="$(
-  "$CARGO_BIN" run \
-    --quiet \
-    --manifest-path "$MANIFEST_PATH" \
-    -- \
+  bash "$SCRIPT_DIR/harness_runtime.sh" \
     host-profile \
     --workflow-config "$WORKFLOW_CONFIG_PATH" \
     --host "$HOST_KIND" \

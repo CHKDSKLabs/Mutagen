@@ -1,0 +1,75 @@
+name: Harness Dev
+
+on:
+  push:
+    paths:
+      - ".github/workflows/harness-dev.yml"
+      - "harness/**"
+      - "plugins/mutagen/**"
+  pull_request:
+    paths:
+      - ".github/workflows/harness-dev.yml"
+      - "harness/**"
+      - "plugins/mutagen/**"
+
+jobs:
+  test-and-smoke:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: harness
+
+      - name: Check formatting
+        run: cargo fmt --manifest-path harness/Cargo.toml --check
+
+      - name: Check plugin scripts
+        run: bash -n plugins/mutagen/scripts/*.sh
+
+      - name: Run harness tests
+        run: cargo test --manifest-path harness/Cargo.toml
+
+      - name: Build packaged harness binary
+        run: bash plugins/mutagen/scripts/build_harness_binary.sh --debug
+
+      - name: Smoke dashboard serve
+        run: |
+          set -euo pipefail
+          workspace_root="$(mktemp -d)"
+
+          cargo run --quiet --manifest-path harness/Cargo.toml -- project create \
+            --workspace-root "$workspace_root" \
+            --name smoke-app \
+            --stack vite-express-sqlite \
+            --design-system plain-css
+
+          bash plugins/mutagen/scripts/dashboard_dev.sh \
+            --workspace-root "$workspace_root" \
+            --port 7799 \
+            --no-build >"$workspace_root/dashboard.log" 2>&1 &
+          server_pid=$!
+
+          cleanup() {
+            kill "$server_pid" >/dev/null 2>&1 || true
+            wait "$server_pid" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          for _ in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:7799/healthz >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+
+          curl --fail --silent http://127.0.0.1:7799/healthz
+          curl --fail --silent http://127.0.0.1:7799/api/dashboard >/dev/null
+          curl --fail --silent "http://127.0.0.1:7799/api/activity-feed?limit=5" >/dev/null

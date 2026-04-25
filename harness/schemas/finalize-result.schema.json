@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chkdsklabs.example/mutagen-harness/finalize-result.schema.json",
+  "title": "Mutagen Harness Finalize Slice Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "queue_path",
+    "active_state_path",
+    "dispatch_log_path",
+    "summary_path",
+    "slice_id",
+    "status",
+    "completed_at",
+    "attempts",
+    "micro_correction",
+    "retry_path",
+    "state_verified",
+    "files_touched",
+    "verdicts",
+    "duration",
+    "layer",
+    "layer_complete",
+    "completed_in_layer",
+    "completion_marker"
+  ],
+  "properties": {
+    "queue_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "active_state_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "dispatch_log_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "summary_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "slice_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "const": "completed"
+    },
+    "completed_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "attempts": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "micro_correction": {
+      "type": "boolean"
+    },
+    "retry_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "state_verified": {
+      "type": "boolean"
+    },
+    "files_touched": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "verdicts": {
+      "$ref": "queue.schema.json#/$defs/verdicts"
+    },
+    "duration": {
+      "type": "string",
+      "minLength": 1
+    },
+    "duration_seconds": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "layer": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "layer_complete": {
+      "type": "boolean"
+    },
+    "completed_in_layer": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "next_pending_slice_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "completion_marker": {
+      "type": "string",
+      "minLength": 1
+    },
+    "notifications": {
+      "type": "array",
+      "items": {
+        "$ref": "gate-verdict.schema.json#/$defs/notification"
+      }
+    }
+  }
+}

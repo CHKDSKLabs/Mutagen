@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chkdsklabs.example/mutagen-harness/active-slice.schema.json",
+  "title": "Mutagen Harness Active Slice",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "slice_id",
+    "title",
+    "evidence_bundle_path",
+    "author_agent",
+    "active_agent",
+    "stage",
+    "pipeline_mode",
+    "review_required",
+    "layer",
+    "bounded_context",
+    "context_to_update",
+    "attempts",
+    "max_retries",
+    "micro_corrections_used",
+    "max_micro_corrections",
+    "allowed_write_globs",
+    "host"
+  ],
+  "properties": {
+    "slice_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string"
+    },
+    "evidence_bundle_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "author_agent": {
+      "type": "string",
+      "minLength": 1
+    },
+    "active_agent": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stage": {
+      "type": "string",
+      "enum": ["author", "structural_check", "review", "state_record"]
+    },
+    "pipeline_mode": {
+      "type": "string",
+      "enum": ["full", "lightweight"]
+    },
+    "review_required": {
+      "type": "boolean"
+    },
+    "layer": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "bounded_context": {
+      "type": "string",
+      "minLength": 1
+    },
+    "context_to_update": {
+      "type": "string",
+      "minLength": 1
+    },
+    "attempts": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "max_retries": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "micro_corrections_used": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "max_micro_corrections": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "started_at_unix_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "allowed_write_globs": {
+      "$ref": "#/$defs/stringArray"
+    },
+    "amendments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/amendment"
+      }
+    },
+    "host": {
+      "type": "string",
+      "enum": ["stub", "codex", "claude"]
+    },
+    "degraded_capabilities": {
+      "$ref": "#/$defs/stringArray"
+    }
+  },
+  "$defs": {
+    "amendment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ts", "added", "reason", "justification_gap"],
+      "properties": {
+        "ts": {
+          "type": "string",
+          "minLength": 1
+        },
+        "added": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "justification_gap": {
+          "type": "boolean"
+        }
+      }
+    },
+    "stringArray": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}

@@ -44,15 +44,63 @@ Ship a minimal harness that can:
 
 The harness now has a Rust crate under this directory.
 
+Plugin scripts prefer a packaged `plugins/mutagen/bin/mutagen-harness`
+executable, then this source crate through `cargo run`, then
+`mutagen-harness` on `PATH`. Build the plugin-local binary with:
+
+```bash
+bash plugins/mutagen/scripts/build_harness_binary.sh --release
+```
+
+For a local development deployment, use the dev launcher and doctor wrappers:
+
+```bash
+bash plugins/mutagen/scripts/dev_console.sh --workspace-root /path/to/workspace
+bash plugins/mutagen/scripts/dashboard_dev.sh --workspace-root /path/to/workspace
+bash plugins/mutagen/scripts/doctor_dev.sh --workspace-root /path/to/workspace
+```
+
+The deployment runbook lives in [DEPLOY_DEV.md](/mnt/c/Users/spork/dev/agentic_design_workflow/harness/DEPLOY_DEV.md).
+
 Useful commands:
 
 ```bash
+cargo run --manifest-path harness/Cargo.toml -- project init --name crew-scheduler --stack nextjs-postgres --design-system shadcn --deploy-target cloudflare
+cargo run --manifest-path harness/Cargo.toml -- project create --name crew-scheduler --stack vite-express-sqlite --design-system plain-css
+cargo run --manifest-path harness/Cargo.toml -- project inspect
+cargo run --manifest-path harness/Cargo.toml -- project doctor
+cargo run --manifest-path harness/Cargo.toml -- project status
+cargo run --manifest-path harness/Cargo.toml -- project add-feature --title "Add due dates" --description "Tasks should include optional due dates."
+cargo run --manifest-path harness/Cargo.toml -- project features
+cargo run --manifest-path harness/Cargo.toml -- project plan-feature --feature-id feature-...
+cargo run --manifest-path harness/Cargo.toml -- project feature-status --feature-id feature-...
+cargo run --manifest-path harness/Cargo.toml -- project slice-feature --feature-id feature-...
+cargo run --manifest-path harness/Cargo.toml -- project enqueue-feature --feature-id feature-...
+cargo run --manifest-path harness/Cargo.toml -- project feature-flow --title "Add due dates" --description "Tasks should include optional due dates."
+cargo run --manifest-path harness/Cargo.toml -- project execute-feature --feature-id feature-...
+cargo run --manifest-path harness/Cargo.toml -- project feature-progress --feature-id feature-...
+cargo run --manifest-path harness/Cargo.toml -- project dashboard
+cargo run --manifest-path harness/Cargo.toml -- project dashboard-serve --port 7788
+# dashboard-serve also exposes preview/build controls, slice/debug artifacts, operator actions, queue management, a recent activity feed, and bootstrap health actions in the UI
+cargo run --manifest-path harness/Cargo.toml -- project blueprints
+cargo run --manifest-path harness/Cargo.toml -- project apply-blueprint
+cargo run --manifest-path harness/Cargo.toml -- project scaffold
+cargo run --manifest-path harness/Cargo.toml -- project repair --scaffold
+cargo run --manifest-path harness/Cargo.toml -- project run-command --kind test --dry-run
+cargo run --manifest-path harness/Cargo.toml -- project verify-generated
+cargo run --manifest-path harness/Cargo.toml -- project preview-plan
+cargo run --manifest-path harness/Cargo.toml -- project preview-start
+cargo run --manifest-path harness/Cargo.toml -- project preview-status
+cargo run --manifest-path harness/Cargo.toml -- project preview-check
+cargo run --manifest-path harness/Cargo.toml -- project preview-stop
 cargo run --manifest-path harness/Cargo.toml -- host-capabilities --host codex
 cargo run --manifest-path harness/Cargo.toml -- host-profile --host codex --workflow-config .claude/workflow.json
 cargo run --manifest-path harness/Cargo.toml -- validate-queue --queue slices/queue.json
 cargo run --manifest-path harness/Cargo.toml -- prepare-next --queue slices/queue.json --dry-run
 cargo run --manifest-path harness/Cargo.toml -- prepare-selected-slice --queue slices/queue.json --slice-id L1-orders-001 --dry-run
 cargo run --manifest-path harness/Cargo.toml -- prepare-cohort --queue slices/queue.json --host claude --dry-run
+cargo run --manifest-path harness/Cargo.toml -- dispatch-cohort-members --runner-script plugins/mutagen/scripts/run_slice_once.sh --host claude --member-json '{"slice_id":"L1-orders-001","worktree_path":".mutagen/worktrees/run/L1-orders-001","result_path":".mutagen/worktrees/run/L1-orders-001.result","status_path":".mutagen/worktrees/run/L1-orders-001.exit"}'
+cargo run --manifest-path harness/Cargo.toml -- apply-cohort-dispatch --member-json '{"slice_id":"L1-orders-001","worktree_path":".mutagen/worktrees/run/L1-orders-001","result_path":".mutagen/worktrees/run/L1-orders-001.result","status_path":".mutagen/worktrees/run/L1-orders-001.exit","outcome":{"status":"ready","slice_id":"L1-orders-001","worktree_path":".mutagen/worktrees/run/L1-orders-001","member_status":"completed","run_output":{"status":"completed"}}}'
 cargo run --manifest-path harness/Cargo.toml -- prepare-dispatch --slice-id L1-orders-001
 cargo run --manifest-path harness/Cargo.toml -- record-review-verdict --slice-id L1-orders-001
 cargo run --manifest-path harness/Cargo.toml -- update-slice --slice-id L1-orders-001 --status in_progress --attempts 1
@@ -62,6 +110,11 @@ cargo run --manifest-path harness/Cargo.toml -- scope-violation --violation-repo
 cargo run --manifest-path harness/Cargo.toml -- amend-scope --requested-glob src/orders/support/** --mutation-kind modify --reason "Need a helper beside the aggregate."
 cargo run --manifest-path harness/Cargo.toml -- finalize-slice --slice-id L1-orders-001 --completed-at 2026-04-22T18:00:00Z
 ```
+
+Runtime artifact contracts are documented in `ARTIFACT_SCHEMAS.md`; JSON
+schemas live under `schemas/`.
+
+Operational usage is documented in `RUNBOOK.md`.
 
 `prepare-next` now resolves and validates a slice-scoped evidence bundle before
 claiming the next slice. On non-dry runs it writes the bundle to
@@ -144,4 +197,4 @@ manifest plus `.mutagen/state/amendments.jsonl` audit records itself.
 
 If a behavior matters, the harness should enforce it or record it. If the only control is "the prompt said pretty please," that is not a control plane.
 
-See `REQUIREMENTS.md`, `SLICEMAP_SPEC.md`, `QUEUE_SCHEMA.md`, `SHREDDER_OUTPUT_SPEC.md`, `ARCHITECTURE.md`, `STATE_MACHINE.md`, and `WORKLIST.md`.
+See `RUNBOOK.md`, `REQUIREMENTS.md`, `SLICEMAP_SPEC.md`, `QUEUE_SCHEMA.md`, `ARTIFACT_SCHEMAS.md`, `RULE_INVENTORY.md`, `SHREDDER_OUTPUT_SPEC.md`, `ARCHITECTURE.md`, `STATE_MACHINE.md`, and `WORKLIST.md`.

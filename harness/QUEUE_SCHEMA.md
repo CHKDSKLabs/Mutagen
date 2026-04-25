@@ -1,12 +1,16 @@
 # Queue Schema
 
-This document defines the canonical machine-readable execution artifact.
+This document defines the canonical machine-readable queue artifact.
+
+Related runtime artifact contracts live in
+[`ARTIFACT_SCHEMAS.md`](ARTIFACT_SCHEMAS.md). JSON schemas live under
+[`schemas/`](schemas/).
 
 ## Purpose
 
 `queue.json` is the source of truth for execution.
 
-The harness uses it for:
+The harness uses `queue.json` for:
 
 - deterministic readiness
 - scope-aware scheduling
@@ -116,6 +120,19 @@ Runtime-managed during execution:
 ```
 
 `resolved_at` is null until the human prerequisite is cleared. Once resolved, the harness may proceed without rediscovering the same obstacle every turn like it has never seen a computer before.
+
+## Runtime Artifact Schemas
+
+The queue is only one runtime artifact. The current schema set is:
+
+- [`schemas/queue.schema.json`](schemas/queue.schema.json)
+- [`schemas/active-slice.schema.json`](schemas/active-slice.schema.json)
+- [`schemas/gate-verdict.schema.json`](schemas/gate-verdict.schema.json)
+- [`schemas/dispatch-log-entry.schema.json`](schemas/dispatch-log-entry.schema.json)
+- [`schemas/finalize-result.schema.json`](schemas/finalize-result.schema.json)
+
+The evidence bundle and summary are Markdown artifacts with stable section
+contracts documented in [`ARTIFACT_SCHEMAS.md`](ARTIFACT_SCHEMAS.md).
 
 ## Verdict object
 

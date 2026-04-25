@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/counter.sh"
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/counter.sh\""
           }
         ]
       }

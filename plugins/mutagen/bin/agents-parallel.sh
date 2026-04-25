@@ -4,10 +4,32 @@
 # without stdout interleaving.
 #
 # Usage:
-#   agents-parallel.sh <PersonaA> <PersonaB> "<shared prompt>"
-#   agents-parallel.sh Bishop TigerClaw "$(cat prompt.md)"
+#   agents-parallel.sh [--host HOST] <PersonaA> <PersonaB> "<shared prompt>"
+#   agents-parallel.sh --host claude Bishop TigerClaw "$(cat prompt.md)"
 
 set -euo pipefail
+
+host="${MUTAGEN_HOST:-codex}"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --host)
+      [[ $# -ge 2 ]] || {
+        echo "usage: agents-parallel.sh [--host HOST] <PersonaA> <PersonaB> \"<shared prompt>\"" >&2
+        exit 2
+      }
+      host="$2"
+      shift 2
+      ;;
+    --help|-h)
+      echo "usage: agents-parallel.sh [--host HOST] <PersonaA> <PersonaB> \"<shared prompt>\"" >&2
+      exit 2
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
 
 a="${1:?missing persona A}"
 b="${2:?missing persona B}"
@@ -22,9 +44,9 @@ mkdir -p "$state_dir"
 out_a="$state_dir/$(echo "$a" | tr '[:upper:]' '[:lower:]').stdout"
 out_b="$state_dir/$(echo "$b" | tr '[:upper:]' '[:lower:]').stdout"
 
-"$here/agent.sh" "$a" "$prompt" >"$out_a" 2>&1 &
+"$here/agent.sh" --host "$host" "$a" "$prompt" >"$out_a" 2>&1 &
 pid_a=$!
-"$here/agent.sh" "$b" "$prompt" >"$out_b" 2>&1 &
+"$here/agent.sh" --host "$host" "$b" "$prompt" >"$out_b" 2>&1 &
 pid_b=$!
 
 fail=0
