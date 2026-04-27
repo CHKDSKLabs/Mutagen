@@ -1,5 +1,7 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 use mutagen_harness::adapter::{HostKind, adapter_for, resolved_host_profile};
 use mutagen_harness::amend_scope::{AmendScopeOptions, MutationKind, amend_scope};
 use mutagen_harness::cohort::{PrepareCohortOptions, prepare_cohort};
@@ -232,6 +234,15 @@ enum Command {
         escalation_reason: Option<String>,
         #[arg(long)]
         clear_escalation_reason: bool,
+        /// Set human_check_needed.resolved_at to a specific ISO-8601 timestamp.
+        #[arg(long)]
+        human_check_resolved_at: Option<String>,
+        /// Set human_check_needed.resolved_at to the current UTC time.
+        #[arg(long)]
+        resolve_human_check: bool,
+        /// Clear human_check_needed.resolved_at (re-opens the gate).
+        #[arg(long)]
+        clear_human_check_resolved_at: bool,
     },
     TransitionActiveSlice {
         #[arg(long, default_value = "slices/queue.json")]
@@ -1001,7 +1012,24 @@ fn main() -> Result<()> {
             clear_completed_at,
             escalation_reason,
             clear_escalation_reason,
+            human_check_resolved_at,
+            resolve_human_check,
+            clear_human_check_resolved_at,
         } => {
+            if resolve_human_check && human_check_resolved_at.is_some() {
+                anyhow::bail!(
+                    "use either --resolve-human-check or --human-check-resolved-at, not both"
+                );
+            }
+            let resolved_at = if resolve_human_check {
+                Some(
+                    OffsetDateTime::now_utc()
+                        .format(&Rfc3339)
+                        .context("failed to format current UTC time")?,
+                )
+            } else {
+                human_check_resolved_at
+            };
             let result = update_slice(UpdateSliceOptions {
                 queue_path: queue,
                 slice_id,
@@ -1016,6 +1044,8 @@ fn main() -> Result<()> {
                 clear_completed_at,
                 escalation_reason,
                 clear_escalation_reason,
+                human_check_resolved_at: resolved_at,
+                clear_human_check_resolved_at,
             })?;
 
             println!("{}", serde_json::to_string_pretty(&result)?);

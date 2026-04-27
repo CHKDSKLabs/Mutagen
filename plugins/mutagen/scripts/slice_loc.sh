@@ -126,8 +126,41 @@ base_ref=""
 if [ -r "$ref_file" ]; then
   base_ref=$(tr -d '[:space:]' < "$ref_file")
 fi
+
+# Resolve the comparison base. Greenfield repos (no commits yet) and freshly
+# `git init`-ed projects have no HEAD^, so `git diff HEAD^` reports `added: 0`
+# even when real new files exist. Walk a fallback chain instead:
+#   1. Saved start-of-slice ref (if it actually resolves).
+#   2. HEAD^ (normal case: prior commit on the branch).
+#   3. Empty-tree object (greenfield: every tracked file counts as added).
+#
+# Mode is reported back so the caller knows whether the LOC delta is being
+# measured against a real base or against the empty tree.
+empty_tree="$(git hash-object -t tree /dev/null 2>/dev/null || echo '4b825dc642cb6eb9a060e54bf8d69288fbee4904')"
+base_mode="saved"
+
+if [ -n "$base_ref" ]; then
+  if ! git rev-parse --verify --quiet "$base_ref^{commit}" >/dev/null 2>&1 \
+     && ! git rev-parse --verify --quiet "$base_ref^{tree}" >/dev/null 2>&1; then
+    base_ref=""
+  fi
+fi
+
 if [ -z "$base_ref" ]; then
-  base_ref="HEAD^"
+  if git rev-parse --verify --quiet 'HEAD^{commit}' >/dev/null 2>&1; then
+    if git rev-parse --verify --quiet 'HEAD^^{commit}' >/dev/null 2>&1; then
+      base_ref="HEAD^"
+      base_mode="head_parent"
+    else
+      # Single-commit repo: HEAD^ does not resolve. Compare against empty tree
+      # so the initial commit shows up as added LOC instead of zero.
+      base_ref="$empty_tree"
+      base_mode="empty_tree"
+    fi
+  else
+    base_ref="$empty_tree"
+    base_mode="empty_tree"
+  fi
 fi
 
 # Build pathspec list for `git diff`. Include both declared write_set globs and
@@ -153,6 +186,10 @@ done <<< "$adjacent_globs"
 # `git diff --numstat` is easier to parse than `--stat`: tab-separated added\tdeleted\tpath.
 diff_out=$(git diff --numstat "$base_ref" -- "${pathspecs[@]}" 2>/dev/null || true)
 
+# When the base is the empty tree we also need to count files that exist on
+# disk but were never staged (greenfield slice that wrote new files without
+# committing them yet). Walk those via `git diff --no-index` against /dev/null
+# so the script reports a real LOC count instead of `added: 0`.
 added=0
 deleted=0
 while IFS=$'\t' read -r a d _; do
@@ -163,6 +200,16 @@ while IFS=$'\t' read -r a d _; do
   deleted=$((deleted + d))
 done <<< "$diff_out"
 
+if [ "$base_mode" = "empty_tree" ]; then
+  untracked=$(git ls-files --others --exclude-standard -- "${pathspecs[@]}" 2>/dev/null || true)
+  while IFS= read -r path; do
+    [ -z "$path" ] && continue
+    [ -f "$path" ] || continue
+    lines=$(wc -l < "$path" 2>/dev/null || echo 0)
+    added=$((added + lines))
+  done <<< "$untracked"
+fi
+
 net=$((added - deleted))
 
 over_pct=0
@@ -170,5 +217,5 @@ if [ "$target_loc" -gt 0 ]; then
   over_pct=$(( (net * 100) / target_loc ))
 fi
 
-printf '{"slice":"%s","base_ref":"%s","added":%d,"deleted":%d,"net":%d,"target":%d,"over_target_pct":%d}\n' \
-  "$slice_id" "$base_ref" "$added" "$deleted" "$net" "$target_loc" "$over_pct"
+printf '{"slice":"%s","base_ref":"%s","base_mode":"%s","added":%d,"deleted":%d,"net":%d,"target":%d,"over_target_pct":%d}\n' \
+  "$slice_id" "$base_ref" "$base_mode" "$added" "$deleted" "$net" "$target_loc" "$over_pct"

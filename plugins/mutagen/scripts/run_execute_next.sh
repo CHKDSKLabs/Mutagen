@@ -181,11 +181,37 @@ LEGACY_PATH="$(absolute_path "$LEGACY_PATH")"
 
 COMPLETED_SLICES_JSON='[]'
 LOOP_GUARD=0
+PAUSE_SENTINEL="$WORKSPACE_ROOT/.mutagen/state/pause.json"
 
 while true; do
   LOOP_GUARD=$((LOOP_GUARD + 1))
   if [[ $LOOP_GUARD -gt $MAX_LOOPS ]]; then
     emit_error "loop_guard_exceeded" "execute-next runner exceeded its loop guard"
+  fi
+
+  # Stage-boundary pause: if an operator dropped a pause sentinel since the
+  # previous iteration, stop here and surface the reason instead of claiming
+  # the next slice. The harness does not pre-empt work already in flight; that
+  # is by design (use OS signals if you need to kill an active dispatch).
+  if [[ -f "$PAUSE_SENTINEL" ]]; then
+    if [[ -s "$PAUSE_SENTINEL" ]] && "$JQ_BIN" empty "$PAUSE_SENTINEL" >/dev/null 2>&1; then
+      pause_payload="$(cat "$PAUSE_SENTINEL")"
+    else
+      pause_payload='{}'
+    fi
+    "$JQ_BIN" -n \
+      --argjson completed_slices "$COMPLETED_SLICES_JSON" \
+      --argjson pause "$pause_payload" \
+      --arg sentinel "$PAUSE_SENTINEL" \
+      '{
+        ok: true,
+        status: "paused",
+        completed_count: ($completed_slices | length),
+        completed_slices: $completed_slices,
+        completion_markers: ($completed_slices | map(.completion_marker)),
+        pause: ($pause + {sentinel: $sentinel})
+      }'
+    exit 0
   fi
 
   set +e

@@ -169,6 +169,23 @@ pub fn finalize_slice(options: FinalizeSliceOptions) -> Result<FinalizeSliceResu
             );
         }
 
+        // human_check_needed.required is a binding contract, not a label. If a
+        // slice declares it requires a human check, finalize is gated until
+        // the check is resolved (resolved_at populated). Operators clear the
+        // gate via `update-slice --resolve-human-check`, which records the
+        // current timestamp on the slice. This replaces the older
+        // advisory-only behaviour where finalize completed silently.
+        if slice.human_check_needed.required && slice.human_check_needed.resolved_at.is_none() {
+            bail!(
+                "slice `{}` cannot finalize while `human_check_needed.required` \
+                 is set without `resolved_at`. Resolve the check (run \
+                 `update-slice --slice-id {} --resolve-human-check`) or flip \
+                 required to false in the queue, then retry.",
+                slice.id,
+                slice.id
+            );
+        }
+
         if slice.verdicts.bishop.is_none() {
             slice.verdicts.bishop = Some(BishopVerdict::Skip);
         }

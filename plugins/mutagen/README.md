@@ -290,23 +290,47 @@ Shredder's slicing order follows a 6-layer dependency hierarchy (Foundation → 
 
 Traag closes the scope-security gap that raw harness permissions cannot express: instead of "allow all writes" or "prompt on every write," Traag evaluates each `Write` / `Edit` / delete against a per-slice scope manifest plus a global denylist (secrets, `.git`, lock files, infra config outside Krang's slices, upstream design artifacts). Deny is the default on any ambiguity; a DENY blocks the mutation and fires as a Red inspection outcome in Karai, halting the slice and surfacing the Violation Report to the human. There is no "just this once" override — amendments happen upstream by amending the manifest or re-slicing via Shredder.
 
-## Session ritual — five slash commands
+## Session ritual — host-aware command surface
 
-Namespaced under `mutagen:`:
+The command surface is host-aware:
+
+- **Claude Code** — slash commands, namespaced `mutagen:`. Sources live in
+  `plugins/mutagen/commands/<name>.md`. Invoke as `/mutagen:<name>`.
+- **Codex** — explicit-only skills, namespaced `mutagen-`. Sources live in
+  `plugins/mutagen/skills/mutagen-<name>/SKILL.md`. Invoke as
+  `$mutagen-<name>`.
+
+The two surfaces drive the same shell scripts under `plugins/mutagen/scripts/`
+and the same Rust harness, so the workflow is identical — only the entrypoint
+differs. The table below uses Claude form first; the matching Codex name is
+parenthesised.
 
 | Command | Purpose |
 |---------|---------|
-| `/mutagen:elicit` | Run April to interview you and author / iterate the five upstream documents. Persists her Readiness Brief to `.mutagen/state/readiness-brief.{md,json}`. |
-| `/mutagen:slice` | Run Shredder on the approved bundle to produce a dependency-ordered slice queue. Emits `slices/queue.json` (canonical) and `slices/slicemap.md` (human-readable), refreshes legacy `slices/queue.md` as a compatibility shadow, then validates the queue through the harness before handing it to Karai. Persists Shredder's Validation Report to `.mutagen/state/validation-report.{md,json}` and the harness queue-validator report to `.mutagen/state/queue-validation.json`, including queue-contract freshness metadata so normal runtime bookkeeping does not falsely stale the queue. |
-| `/mutagen:execute-next` | Run Karai on the next pending slice — refuses dispatch when the queue-validation report is missing, stale, orphaned, or failed, then drives through `scripts/run_execute_next.sh`. That runner now loops `scripts/run_cohort_once.sh`, which falls back to `scripts/run_slice_once.sh` on serial hosts and uses `scripts/prepare_cohort.sh` plus isolated git worktrees on bounded-parallel hosts. The harness owns sibling selection, targeted slice materialization, stage dispatch prep, structural gating, verdict recording, retry branching, canonical closeout, state-update application, and notification planning. Successful cohort members are imported back into the main tree in queue order, with state updates applied from author output instead of copying shared context files around like that was ever going to age well. |
-| `/mutagen:amend-scope` | Evaluate a mid-slice amendment request through the harness `amend-scope` runtime. The runtime enforces stage fidelity, active-agent domain, and global deny rules, rewrites `.mutagen/state/active-slice.json` on ALLOW, appends `.mutagen/state/amendments.jsonl` on both ALLOW and DENY, and returns the canonical rationale / next-step payload. |
-| `/mutagen:status` | Read-only report on upstream-document status, April's Readiness Brief, Shredder's Validation Report, harness queue-validation state, queue progress, active slice, latest scope-violation artifact, heartbeat telemetry, gate verdicts, and open escalations. |
-| `/mutagen:setup-pushover` | First-run wizard for Pushover notifications — detects existing config, collects user key + app token, lets you pick env-var or `workflow.json` storage, optionally configures `quiet_events`, and sends a test push. |
+| `/mutagen:elicit`        (`$mutagen-elicit`)        | Run April to interview you and author / iterate the five upstream documents. Persists her Readiness Brief to `.mutagen/state/readiness-brief.{md,json}`. |
+| `/mutagen:slice`         (`$mutagen-slice`)         | Run Shredder on the approved bundle to produce a dependency-ordered slice queue. Emits `slices/queue.json` (canonical) and `slices/slicemap.md` (human-readable), refreshes legacy `slices/queue.md` as a compatibility shadow, then validates the queue through the harness before handing it to Karai. Persists Shredder's Validation Report to `.mutagen/state/validation-report.{md,json}` and the harness queue-validator report to `.mutagen/state/queue-validation.json`, including queue-contract freshness metadata so normal runtime bookkeeping does not falsely stale the queue. |
+| `/mutagen:execute-next`  (`$mutagen-execute-next`)  | Run Karai on the next pending slice. Wraps `scripts/run_execute_next.sh`. Stops at queue clear, stalled deps, escalation, queue-validation failure, or — when the operator drops `.mutagen/state/pause.json` — `status: "paused"`. The harness owns sibling selection, targeted slice materialization, stage dispatch prep, structural gating, verdict recording, retry branching, canonical closeout, state-update application, and notification planning. |
+| `/mutagen:resume`        (no Codex skill yet)       | Resume after a manual repair: optionally flip the slice back to `in_progress`, re-run structural-check on the repaired author output, and dispatch review. One-shot — does not loop. |
+| `/mutagen:pause`         (no Codex skill yet)       | Stage-boundary pause / resume / status for the execute-next loop. `pause on --reason TEXT` makes the next iteration stop before claiming a slice; `pause off` clears the sentinel. Does not pre-empt work already in flight. |
+| `/mutagen:amend-scope`   (`$mutagen-amend-scope`)   | Evaluate a mid-slice amendment request through the harness `amend-scope` runtime. The runtime enforces stage fidelity, active-agent domain, and global deny rules, rewrites `.mutagen/state/active-slice.json` on ALLOW, appends `.mutagen/state/amendments.jsonl` on both ALLOW and DENY, and returns the canonical rationale / next-step payload. |
+| `/mutagen:status`        (`$mutagen-status`)        | Read-only report on upstream-document status, April's Readiness Brief, Shredder's Validation Report, harness queue-validation state, queue progress, active slice, latest scope-violation artifact, heartbeat telemetry, gate verdicts, and open escalations. |
+| `/mutagen:setup-pushover` (`$mutagen-setup-pushover`) | First-run wizard for Pushover notifications. |
 
 Stage dispatch is host-aware. `--host codex` runs personas through `codex exec`
-using `CODEX_BIN` when set; `--host claude` runs them through `claude --print`
-using `CLAUDE_BIN` when set. Set `MUTAGEN_AGENT_LAUNCHER` to replace the
-launcher for either host or for a future host adapter.
+using `CODEX_BIN` when set; `--host claude` runs them through the packaged
+non-interactive wrapper `bin/claude-harness.sh` (which calls `claude --print
+--permission-mode bypassPermissions`) using `CLAUDE_BIN` when set. Set
+`MUTAGEN_AGENT_LAUNCHER` to replace the launcher for either host or for a
+future host adapter.
+
+If a host-specific install does not surface the plugin's commands or skills
+(for example: a portable copy under `.mutagen/mutagen/` that the host did not
+register), fall back to invoking the persona directly:
+
+```bash
+bash "$MUTAGEN_ROOT/bin/agent.sh" --host claude Shredder "<task>"
+bash "$MUTAGEN_ROOT/bin/agent.sh" --host codex  Shredder "<task>"
+```
 
 Typical rhythm on a new project:
 

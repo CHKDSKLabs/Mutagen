@@ -26,6 +26,8 @@ fn update_slice_records_runtime_verdicts_and_escalation() {
         clear_completed_at: false,
         escalation_reason: Some("Structural check halted the slice.".to_string()),
         clear_escalation_reason: false,
+        human_check_resolved_at: None,
+        clear_human_check_resolved_at: false,
     })
     .expect("update-slice should succeed");
 
@@ -79,6 +81,8 @@ fn update_slice_records_completion_fields() {
         clear_completed_at: false,
         escalation_reason: None,
         clear_escalation_reason: false,
+        human_check_resolved_at: None,
+        clear_human_check_resolved_at: false,
     })
     .expect("update-slice should succeed");
 
@@ -125,6 +129,8 @@ fn update_slice_can_clear_runtime_fields() {
         clear_completed_at: true,
         escalation_reason: None,
         clear_escalation_reason: true,
+        human_check_resolved_at: None,
+        clear_human_check_resolved_at: false,
     })
     .expect("update-slice should succeed");
 

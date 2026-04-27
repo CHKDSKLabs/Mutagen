@@ -23,6 +23,8 @@ pub struct UpdateSliceOptions {
     pub clear_completed_at: bool,
     pub escalation_reason: Option<String>,
     pub clear_escalation_reason: bool,
+    pub human_check_resolved_at: Option<String>,
+    pub clear_human_check_resolved_at: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -38,6 +40,9 @@ pub struct UpdateSliceResult {
     pub completed_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub escalation_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub human_check_resolved_at: Option<String>,
+    pub human_check_required: bool,
 }
 
 pub fn update_slice(options: UpdateSliceOptions) -> Result<UpdateSliceResult> {
@@ -47,6 +52,10 @@ pub fn update_slice(options: UpdateSliceOptions) -> Result<UpdateSliceResult> {
 
     if options.clear_escalation_reason && options.escalation_reason.is_some() {
         bail!("cannot set and clear `escalation_reason` in the same update");
+    }
+
+    if options.clear_human_check_resolved_at && options.human_check_resolved_at.is_some() {
+        bail!("cannot set and clear `human_check_needed.resolved_at` in the same update");
     }
 
     let mut queue = load_queue_file(&options.queue_path)?;
@@ -96,6 +105,12 @@ pub fn update_slice(options: UpdateSliceOptions) -> Result<UpdateSliceResult> {
             slice.escalation_reason = Some(escalation_reason);
         }
 
+        if options.clear_human_check_resolved_at {
+            slice.human_check_needed.resolved_at = None;
+        } else if let Some(resolved_at) = options.human_check_resolved_at {
+            slice.human_check_needed.resolved_at = Some(resolved_at);
+        }
+
         UpdateSliceResult {
             queue_path: display_path(&options.queue_path),
             slice_id: slice.id.clone(),
@@ -105,6 +120,8 @@ pub fn update_slice(options: UpdateSliceOptions) -> Result<UpdateSliceResult> {
             verdicts: slice.verdicts.clone(),
             completed_at: slice.completed_at.clone(),
             escalation_reason: slice.escalation_reason.clone(),
+            human_check_resolved_at: slice.human_check_needed.resolved_at.clone(),
+            human_check_required: slice.human_check_needed.required,
         }
     };
 

@@ -246,6 +246,8 @@ fn sync_queue_patch(queue_path: &Path, slice_id: &str, patch: &QueueSyncPatch) -
         clear_completed_at: false,
         escalation_reason: patch.escalation_reason.clone(),
         clear_escalation_reason: false,
+        human_check_resolved_at: None,
+        clear_human_check_resolved_at: false,
     })?;
 
     Ok(())

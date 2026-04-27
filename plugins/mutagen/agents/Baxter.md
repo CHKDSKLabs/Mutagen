@@ -140,5 +140,36 @@ Present your output with clinical, terminal-like precision. Do not omit sections
 
 ---
 
-**Output discipline:**
-*Shut up and work. Fill each required section tersely — bullets, file paths, one-line assertions. No prose recap, no character voice, no "here is what I did" narration. On success, close with exactly one line: `✔ <slice_id> complete`. If the slice cannot be executed, stop and report the blocker in one paragraph — what you tried, what failed, what you need.*
+**Output discipline (binding contract — the harness reads this literally):**
+
+1. The very first non-blank line of stdout MUST be the execution header:
+
+   ```
+   ### 🔬 Execution: <slice_id>
+   ```
+
+   No preamble, no greeting, no "Here is...", no "Working on...". The header
+   is how the harness recognises a complete artifact. A run that does not start
+   with the header is treated as structurally broken and re-dispatched.
+
+2. Emit every section listed in **Output Format** in order. If a section is
+   genuinely N/A, write the heading and one line: `N/A — <reason>`. Do not
+   silently drop sections.
+
+3. Fill each section tersely — bullets, file paths, one-line assertions. No
+   prose recap, no character voice, no "here is what I did" narration, no
+   meta commentary about the harness or the dispatch.
+
+4. The State Update block in the final section MUST be a fenced ````markdown```
+   block exactly as templated above. The harness parses it; surrounding prose
+   breaks parsing.
+
+5. On success, close with exactly one line and nothing after it:
+
+   ```
+   ✔ <slice_id> complete
+   ```
+
+6. If the slice cannot be executed, replace the body with a single blocker
+   paragraph: what you tried, what failed, what you need. Do not emit the
+   success marker. Still start with the execution header.

@@ -57,9 +57,21 @@ fi
 
 profile="$(echo "$persona" | tr '[:upper:]' '[:lower:]')"
 
+# Strip ONLY the first YAML frontmatter block: `---` on line 1 opens, the next
+# `---` closes. Any later `---` in the body is a normal Markdown horizontal
+# rule and must be preserved. The previous toggle-on-every-`---` behavior
+# corrupted personas that used `---` as a section separator.
 persona_body="$(awk '
-  /^---[[:space:]]*$/ { in_fm = !in_fm; next }
-  !in_fm { print }
+  NR == 1 && /^---[[:space:]]*$/ {
+    in_fm = 1
+    next
+  }
+  in_fm && /^---[[:space:]]*$/ {
+    in_fm = 0
+    next
+  }
+  in_fm { next }
+  { print }
 ' "$persona_file")"
 
 read -r -d '' framing <<EOF || true
@@ -87,8 +99,16 @@ case "$host" in
       "$framing"
     ;;
   claude)
-    claude="${CLAUDE_BIN:-claude}"
-    exec "$claude" --print "$framing"
+    # Default to the packaged non-interactive wrapper (claude --print
+    # --permission-mode bypassPermissions). When CLAUDE_BIN points at the bare
+    # `claude` binary we still need to pass --print so the subprocess does not
+    # fall into an interactive REPL and stall the harness.
+    claude="${CLAUDE_BIN:-${MUTAGEN_ROOT}/bin/claude-harness.sh}"
+    if [[ "$(basename "$claude")" == "claude-harness.sh" ]]; then
+      exec "$claude" "$framing"
+    else
+      exec "$claude" --print --permission-mode bypassPermissions "$framing"
+    fi
     ;;
   *)
     echo "agent.sh: unsupported host '$host'. Set MUTAGEN_AGENT_LAUNCHER to provide a custom launcher." >&2

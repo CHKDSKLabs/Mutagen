@@ -55,6 +55,8 @@ fn finalize_slice_writes_summary_dispatch_log_and_clears_active_state() {
         clear_completed_at: false,
         escalation_reason: None,
         clear_escalation_reason: false,
+        human_check_resolved_at: None,
+        clear_human_check_resolved_at: false,
     })
     .expect("queue update should succeed");
 
@@ -171,6 +173,8 @@ Completed, probably. Details are elsewhere.
         clear_completed_at: false,
         escalation_reason: None,
         clear_escalation_reason: false,
+        human_check_resolved_at: None,
+        clear_human_check_resolved_at: false,
     })
     .expect("queue update should succeed");
 

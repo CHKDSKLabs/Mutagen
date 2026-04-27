@@ -161,7 +161,9 @@ pub fn validate_queue(queue: &SliceQueue) -> QueueValidationReport {
                 ValidationLevel::Warning,
                 "human_check_pending",
                 format!(
-                    "slice `{}` is blocked on an unresolved human check",
+                    "slice `{}` is gated on an unresolved human check; finalize \
+                     will refuse until `update-slice --resolve-human-check` runs \
+                     or `human_check_needed.required` is flipped to false",
                     slice.id
                 ),
                 Some(slice.id.clone()),

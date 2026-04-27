@@ -27,6 +27,7 @@ Treat the script's JSON payload as authoritative.
 - `status: "queue_clear"`: report queue clear and stop.
 - `status: "stalled"`: surface the returned blocked dependency payload and stop.
 - `status: "escalated"`: surface the returned terminal payload and stop.
+- `status: "paused"`: an operator dropped `.mutagen/state/pause.json`. Surface the pause reason (if any) and stop. Resume by clearing the sentinel via `bash "${CLAUDE_PLUGIN_ROOT}/scripts/pause.sh" off` (or `/mutagen:pause off`) and re-running `/mutagen:execute-next`.
 - `status: "queue_validation_failed"` with exit code `2`: surface the payload, recommend `/mutagen:slice`, and stop.
 - Any non-JSON output or non-zero tooling failure: surface the wrapper error and stop.
 

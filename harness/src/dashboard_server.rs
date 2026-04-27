@@ -763,6 +763,8 @@ fn operate_slice_status(
         clear_completed_at: false,
         escalation_reason,
         clear_escalation_reason: false,
+        human_check_resolved_at: None,
+        clear_human_check_resolved_at: false,
     })?;
     let active_state_cleared = clear_active_state_if_matches(workspace_root, slice_id)?;
 
@@ -799,6 +801,8 @@ fn resume_slice(workspace_root: &Path, slice_id: &str) -> Result<serde_json::Val
         clear_completed_at: false,
         escalation_reason: None,
         clear_escalation_reason: true,
+        human_check_resolved_at: None,
+        clear_human_check_resolved_at: false,
     })?;
 
     Ok(json!({
