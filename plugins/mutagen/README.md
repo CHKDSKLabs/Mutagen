@@ -149,34 +149,22 @@ Inspect feature progress:
 bash plugins/mutagen/scripts/project.sh feature-progress --feature-id feature-...
 ```
 
-Load the dashboard snapshot:
+Load the dashboard snapshot (read-only JSON; the embedded HTTP dashboard
+has been retired in favour of the CLI surface):
 
 ```bash
 bash plugins/mutagen/scripts/project.sh dashboard
 ```
 
-Serve the local dashboard:
-
-```bash
-bash plugins/mutagen/scripts/project.sh dashboard-serve --port 7788
-```
-
-The dashboard now includes preview controls plus setup/test/build/verify actions,
-so it can act like a small project console instead of just a feature queue view.
-
-For local development deployment, prefer the wrappers:
+For workspace-doctor checks, run:
 
 ```bash
 bash plugins/mutagen/scripts/doctor_dev.sh --workspace-root /path/to/workspace
-bash plugins/mutagen/scripts/dashboard_dev.sh --workspace-root /path/to/workspace
-bash plugins/mutagen/scripts/dev_console.sh --workspace-root /path/to/workspace
 ```
 
-That path checks the workspace, builds a packaged harness binary when needed,
-and launches the dashboard with the defaults from `harness/config/dev.toml`.
-
-Inside the plugin command surface, use `/mutagen:dashboard` as the one obvious
-move for launching the local console.
+The operator surface for run control is the CLI: `/mutagen:execute-next`,
+`/mutagen:status`, `/mutagen:pause`, `/mutagen:resume`, and
+`/mutagen:amend-scope`.
 
 Run a blueprint command through the capsule:
 

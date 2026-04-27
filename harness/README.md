@@ -52,11 +52,9 @@ executable, then this source crate through `cargo run`, then
 bash plugins/mutagen/scripts/build_harness_binary.sh --release
 ```
 
-For a local development deployment, use the dev launcher and doctor wrappers:
+For a local development deployment, use the doctor wrapper:
 
 ```bash
-bash plugins/mutagen/scripts/dev_console.sh --workspace-root /path/to/workspace
-bash plugins/mutagen/scripts/dashboard_dev.sh --workspace-root /path/to/workspace
 bash plugins/mutagen/scripts/doctor_dev.sh --workspace-root /path/to/workspace
 ```
 
@@ -80,8 +78,6 @@ cargo run --manifest-path harness/Cargo.toml -- project feature-flow --title "Ad
 cargo run --manifest-path harness/Cargo.toml -- project execute-feature --feature-id feature-...
 cargo run --manifest-path harness/Cargo.toml -- project feature-progress --feature-id feature-...
 cargo run --manifest-path harness/Cargo.toml -- project dashboard
-cargo run --manifest-path harness/Cargo.toml -- project dashboard-serve --port 7788
-# dashboard-serve also exposes preview/build controls, slice/debug artifacts, operator actions, queue management, a recent activity feed, and bootstrap health actions in the UI
 cargo run --manifest-path harness/Cargo.toml -- project blueprints
 cargo run --manifest-path harness/Cargo.toml -- project apply-blueprint
 cargo run --manifest-path harness/Cargo.toml -- project scaffold

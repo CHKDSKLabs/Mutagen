@@ -275,57 +275,27 @@ bash plugins/mutagen/scripts/project.sh feature-progress --feature-id feature-..
 `feature-progress` summarizes the feature's queue slices by status and reports
 the active slice when the feature is currently being executed.
 
-Load a project dashboard snapshot:
+Load a project dashboard snapshot (read-only JSON):
 
 ```bash
 bash plugins/mutagen/scripts/project.sh dashboard
 ```
 
 `dashboard` combines project health, preview state, build history, feature
-backlog, and active feature progress into one JSON response for a UI layer.
+backlog, and active feature progress into one JSON response. The embedded
+HTTP dashboard UI (`project dashboard-serve` and the
+`scripts/dashboard_dev.sh` / `scripts/dev_console.sh` wrappers) has been
+retired. Operator control runs through the CLI surface
+(`/mutagen:execute-next`, `/mutagen:status`, `/mutagen:pause`,
+`/mutagen:resume`, `/mutagen:amend-scope`).
 
-Serve the local dashboard UI:
-
-```bash
-bash plugins/mutagen/scripts/project.sh dashboard-serve --port 7788
-```
-
-`dashboard-serve` hosts a local HTML control panel plus JSON endpoints for
-`dashboard`, `feature-flow`, `execute-feature`, `feature-progress`,
-`preview-plan`, `preview-start`, `preview-check`, `preview-stop`,
-`run-command`, and `verify-generated`.
-
-The UI also exposes recent build history and a preview log tail so the dashboard
-can answer "what just happened?" without dropping back to the shell.
-
-It also exposes slice artifacts for the currently supervised work, including the
-evidence bundle, review artifacts under `reviews/<slice-id>/`, the latest QA
-snapshot, and the live `active-slice.json` payload when that slice is active.
-
-The dashboard now includes operator actions on the selected slice as well:
-mark blocked, escalate, finalize, and refresh the active-state view without
-dropping back to raw harness commands.
-
-It also exposes queue controls: queue status, unresolved blockers, resume on a
-blocked slice, and prepare-next from the dashboard using the same harness
-selection logic the CLI uses.
-
-The dashboard now includes an activity feed that merges build log entries,
-dispatch/finalize log entries, and the current active slice into one recent
-timeline for operator context.
-
-It also includes a bootstrap health strip for first-run recovery: doctor
-status, missing scaffold paths, setup execution, and scaffold repair from the
-same control surface.
-
-For a repeatable local development deployment, use the wrappers:
+For workspace-doctor checks during development, use:
 
 ```bash
 bash plugins/mutagen/scripts/doctor_dev.sh --workspace-root /path/to/workspace
-bash plugins/mutagen/scripts/dashboard_dev.sh --workspace-root /path/to/workspace
 ```
 
-The full deployment runbook lives in [DEPLOY_DEV.md](/mnt/c/Users/spork/dev/agentic_design_workflow/harness/DEPLOY_DEV.md).
+The deployment runbook lives in [DEPLOY_DEV.md](/mnt/c/Users/spork/dev/agentic_design_workflow/harness/DEPLOY_DEV.md).
 
 Resolve or run a project command:
 

@@ -16,7 +16,6 @@ use mutagen_harness::cohort_worktree::{
     materialize_cohort_worktrees,
 };
 use mutagen_harness::config::load_workflow_config_file;
-use mutagen_harness::dashboard_server::{DashboardServeOptions, serve_dashboard};
 use mutagen_harness::dispatch::{AuthorDispatchKind, PrepareDispatchOptions, prepare_dispatch};
 use mutagen_harness::finalize::{FinalizeSliceOptions, finalize_slice};
 use mutagen_harness::project::{
@@ -456,16 +455,6 @@ enum ProjectCommand {
         #[arg(long, default_value = ".")]
         workspace_root: PathBuf,
     },
-    DashboardServe {
-        #[arg(long, default_value = ".")]
-        workspace_root: PathBuf,
-        #[arg(long, default_value = "127.0.0.1")]
-        bind: String,
-        #[arg(long, default_value_t = 7788)]
-        port: u16,
-        #[arg(long, value_enum, default_value_t = HostKind::Stub)]
-        host: HostKind,
-    },
     Blueprints,
     ApplyBlueprint {
         #[arg(long, default_value = ".")]
@@ -692,19 +681,6 @@ fn main() -> Result<()> {
                 let result = dashboard_project(ProjectDashboardOptions { workspace_root })?;
 
                 println!("{}", serde_json::to_string_pretty(&result)?);
-            }
-            ProjectCommand::DashboardServe {
-                workspace_root,
-                bind,
-                port,
-                host,
-            } => {
-                serve_dashboard(DashboardServeOptions {
-                    workspace_root,
-                    bind,
-                    port,
-                    host,
-                })?;
             }
             ProjectCommand::Blueprints => {
                 let result = list_blueprints();

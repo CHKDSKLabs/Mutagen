@@ -40,7 +40,7 @@ jobs:
       - name: Build packaged harness binary
         run: bash plugins/mutagen/scripts/build_harness_binary.sh --debug
 
-      - name: Smoke dashboard serve
+      - name: Smoke project dashboard JSON snapshot
         run: |
           set -euo pipefail
           workspace_root="$(mktemp -d)"
@@ -51,25 +51,7 @@ jobs:
             --stack vite-express-sqlite \
             --design-system plain-css
 
-          bash plugins/mutagen/scripts/dashboard_dev.sh \
-            --workspace-root "$workspace_root" \
-            --port 7799 \
-            --no-build >"$workspace_root/dashboard.log" 2>&1 &
-          server_pid=$!
+          cargo run --quiet --manifest-path harness/Cargo.toml -- project dashboard \
+            --workspace-root "$workspace_root" >"$workspace_root/dashboard.json"
 
-          cleanup() {
-            kill "$server_pid" >/dev/null 2>&1 || true
-            wait "$server_pid" >/dev/null 2>&1 || true
-          }
-          trap cleanup EXIT
-
-          for _ in $(seq 1 30); do
-            if curl --fail --silent http://127.0.0.1:7799/healthz >/dev/null; then
-              break
-            fi
-            sleep 1
-          done
-
-          curl --fail --silent http://127.0.0.1:7799/healthz
-          curl --fail --silent http://127.0.0.1:7799/api/dashboard >/dev/null
-          curl --fail --silent "http://127.0.0.1:7799/api/activity-feed?limit=5" >/dev/null
+          jq -e '.ok == true' "$workspace_root/dashboard.json" >/dev/null

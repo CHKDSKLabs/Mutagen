@@ -8,7 +8,6 @@ pub mod cohort_reconcile;
 pub mod cohort_result;
 pub mod cohort_worktree;
 pub mod config;
-pub mod dashboard_server;
 pub mod dispatch;
 pub mod evidence;
 pub mod finalize;
