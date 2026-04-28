@@ -1,0 +1,37 @@
+# Rust
+/target/
+**/target/
+*.rs.bk
+*.pdb
+
+# Editor / IDE state
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Mutagen workspace state — should never be committed from a consumer repo
+# checkout. The plugin sources under plugins/mutagen/ are committed; the
+# per-workspace state directory is not.
+/.mutagen/
+**/.mutagen/state/
+**/.mutagen/project.json
+**/.mutagen/queue-validation.json
+
+# Local environment
+.env
+.env.local
+.env.*.local
+
+# Logs and debug
+*.log
+*.tmp
+dispatch.log
+dashboard.log
+
+# Claude / Codex local overrides
+.claude/settings.local.json
+.codex.local
