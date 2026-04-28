@@ -100,7 +100,7 @@ machine.
 ## CI Skeleton
 
 The repo includes a starter workflow at
-[.github/workflows/harness-dev.yml](/mnt/c/Users/spork/dev/agentic_design_workflow/.github/workflows/harness-dev.yml).
+[.github/workflows/harness-dev.yml](../.github/workflows/harness-dev.yml).
 It does three useful things:
 
 1. checks Rust formatting

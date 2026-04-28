@@ -295,7 +295,7 @@ For workspace-doctor checks during development, use:
 bash plugins/mutagen/scripts/doctor_dev.sh --workspace-root /path/to/workspace
 ```
 
-The deployment runbook lives in [DEPLOY_DEV.md](/mnt/c/Users/spork/dev/agentic_design_workflow/harness/DEPLOY_DEV.md).
+The deployment runbook lives in [DEPLOY_DEV.md](DEPLOY_DEV.md).
 
 Resolve or run a project command:
 

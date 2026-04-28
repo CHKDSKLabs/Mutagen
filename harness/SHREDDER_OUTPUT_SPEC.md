@@ -25,7 +25,7 @@ Human-readable planning and review artifact.
 
 Defined by:
 
-- [SLICEMAP_SPEC.md](/C:/Users/spork/dev/agentic_design_workflow/harness/SLICEMAP_SPEC.md)
+- [SLICEMAP_SPEC.md](SLICEMAP_SPEC.md)
 
 ### 2. `queue.json`
 
@@ -33,8 +33,8 @@ Canonical machine-readable execution artifact.
 
 Defined by:
 
-- [QUEUE_SCHEMA.md](/C:/Users/spork/dev/agentic_design_workflow/harness/QUEUE_SCHEMA.md)
-- [schemas/queue.schema.json](/C:/Users/spork/dev/agentic_design_workflow/harness/schemas/queue.schema.json)
+- [QUEUE_SCHEMA.md](QUEUE_SCHEMA.md)
+- [schemas/queue.schema.json](schemas/queue.schema.json)
 
 ## Emission rules
 
