@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use serde::Serialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::activation::{ActivateSliceOptions, PreparedSliceActivation, activate_slice};
 use crate::adapter::{HostExecutionProfile, HostKind, resolved_host_profile};
@@ -122,7 +122,7 @@ pub fn prepare_selected_slice(
 }
 
 fn ready_result(
-    queue_path: &PathBuf,
+    queue_path: &Path,
     activation: PreparedSliceActivation,
 ) -> PrepareSelectedSliceResult {
     PrepareSelectedSliceResult::Ready {
@@ -148,6 +148,6 @@ fn ready_result(
     }
 }
 
-fn load_queue(path: &PathBuf) -> Result<SliceQueue> {
+fn load_queue(path: &Path) -> Result<SliceQueue> {
     load_queue_file(path)
 }

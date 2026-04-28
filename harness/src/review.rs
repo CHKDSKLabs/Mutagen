@@ -212,7 +212,7 @@ pub fn review_decision(options: ReviewDecisionOptions) -> Result<ReviewDecisionR
                     });
                 }
 
-                if active_state.attempts >= active_state.max_retries + 1 {
+                if active_state.attempts > active_state.max_retries {
                     let escalation_reason = format!(
                         "Tiger Claw Defect after {} attempts (micro_corrections_used: {})",
                         active_state.attempts, active_state.micro_corrections_used

@@ -1579,20 +1579,20 @@ pub fn preview_start(
     let state_path = preview_state_path(&workspace_root);
     let log_path = preview_log_path(&workspace_root);
 
-    if let Some(state) = load_preview_state_if_present(&state_path)? {
-        if process_running(state.pid) {
-            let ready = preview_ready(&state.url);
-            return Ok(preview_lifecycle_result(
-                "already_running",
-                Some(state.pid),
-                true,
-                ready,
-                state.url,
-                state.command,
-                state_path,
-                log_path,
-            ));
-        }
+    if let Some(state) = load_preview_state_if_present(&state_path)?
+        && process_running(state.pid)
+    {
+        let ready = preview_ready(&state.url);
+        return Ok(preview_lifecycle_result(
+            "already_running",
+            Some(state.pid),
+            true,
+            ready,
+            state.url,
+            state.command,
+            state_path,
+            log_path,
+        ));
     }
 
     if let Some(parent) = log_path.parent() {
