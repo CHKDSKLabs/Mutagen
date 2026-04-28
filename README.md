@@ -59,6 +59,10 @@ globs; nothing blocks it). Reviewers are the backstop.
 
 See [`plugins/mutagen/README.md`](plugins/mutagen/README.md) for the full story.
 
+For a populated reference workspace — five upstream design documents,
+a slice queue, and a Tiger Claw review report in their canonical
+filesystem layout — see [`examples/orders-demo/`](examples/orders-demo/).
+
 ## Repository layout
 
 ```
@@ -76,12 +80,15 @@ See [`plugins/mutagen/README.md`](plugins/mutagen/README.md) for the full story.
 │       ├── commands/                   # 9 Claude slash commands
 │       ├── skills/                     # 7 Codex skills ($mutagen-*)
 │       │   └── <skill>/SKILL.md + agents/openai.yaml
-│       ├── bin/                        # agent.sh / agent.ps1 / agents-parallel.sh — host-aware persona launchers
+│       ├── bin/                        # agent.sh / agent.ps1 / agents-parallel.sh / claude-harness.sh
 │       ├── hooks/                      # Claude Code PreToolUse + PostToolUse
-│       ├── scripts/                    # guard.sh, counter.sh, heartbeat.sh, render_queue.sh, notify.sh
+│       ├── scripts/                    # harness wrappers, dispatch glue, render/render/notify helpers
 │       ├── templates/                  # PRD / ADR / DDD / ISC / DSD templates
 │       ├── guides/                     # authoring & review guides
 │       └── README.md
+├── harness/                            # Rust harness crate (mutagen-harness)
+├── examples/
+│   └── orders-demo/                    # populated reference workspace (read-only)
 └── README.md                           # this file
 ```
 
