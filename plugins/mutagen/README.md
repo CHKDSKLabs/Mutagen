@@ -1,6 +1,6 @@
 # mutagen
 
-The `mutagen` plugin packages an end-to-end agentic design workflow for Claude Code: thirteen subagents, a PreToolUse scope-enforcement hook, six slash commands, plus templates and authoring guides for the five upstream design documents that feed the pipeline.
+The `mutagen` plugin packages an end-to-end agentic design workflow for Claude Code: thirteen subagents, a PreToolUse scope-enforcement hook, nine slash commands, plus templates and authoring guides for the five upstream design documents that feed the pipeline.
 
 The flow is **User ↔ April → Shredder → Karai → {Bebop | Baxter | Chaplin | Metalhead | Splinter | Tatsu | Krang} → Karai (structural) → Bishop (review) → Tiger Claw (adversarial) → Karai → next slice**, with **Traag** wrapping every filesystem mutation any agent attempts.
 
@@ -302,6 +302,7 @@ parenthesised.
 | `/mutagen:pause`         (no Codex skill yet)       | Stage-boundary pause / resume / status for the execute-next loop. `pause on --reason TEXT` makes the next iteration stop before claiming a slice; `pause off` clears the sentinel. Does not pre-empt work already in flight. |
 | `/mutagen:amend-scope`   (`$mutagen-amend-scope`)   | Evaluate a mid-slice amendment request through the harness `amend-scope` runtime. The runtime enforces stage fidelity, active-agent domain, and global deny rules, rewrites `.mutagen/state/active-slice.json` on ALLOW, appends `.mutagen/state/amendments.jsonl` on both ALLOW and DENY, and returns the canonical rationale / next-step payload. |
 | `/mutagen:status`        (`$mutagen-status`)        | Read-only report on upstream-document status, April's Readiness Brief, Shredder's Validation Report, harness queue-validation state, queue progress, active slice, latest scope-violation artifact, heartbeat telemetry, gate verdicts, and open escalations. |
+| `/mutagen:consolidate-advisories` (`$mutagen-consolidate-advisories`) | Promote Bishop's 🟡 Advisory backlog (`.mutagen/state/advisory-backlog.jsonl`) into one or more cleanup slices via Shredder. Without this, advisories accumulate in `reviews/` and never get addressed. |
 | `/mutagen:setup-pushover` (`$mutagen-setup-pushover`) | First-run wizard for Pushover notifications. |
 
 Stage dispatch is host-aware. `--host codex` runs personas through `codex exec`

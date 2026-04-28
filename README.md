@@ -29,10 +29,21 @@ export MUTAGEN_ROOT="/absolute/path/to/agentic_design_workflow/plugins/mutagen"
 
 Codex discovers skills under `plugins/mutagen/skills/<name>/SKILL.md`
 automatically. Invoke with `$mutagen-slice`, `$mutagen-execute-next`,
-`$mutagen-status`, `$mutagen-amend-scope`, `$mutagen-elicit`, or
-`$mutagen-setup-pushover`. All six skills are configured with
-`allow_implicit_invocation: false` — mutagen is a workflow, not a helpful
-tool, so explicit invocation is the only trigger.
+`$mutagen-status`, `$mutagen-amend-scope`, `$mutagen-elicit`,
+`$mutagen-consolidate-advisories`, or `$mutagen-setup-pushover`. All
+seven skills are configured with `allow_implicit_invocation: false` —
+mutagen is a workflow, not a helpful tool, so explicit invocation is the
+only trigger.
+
+Two Claude Code commands have no Codex skill yet: `/mutagen:pause` (a
+stage-boundary pause sentinel for the execute-next loop) and
+`/mutagen:resume` (resume after a manual repair). On Codex, drive those
+through the underlying scripts directly:
+
+```bash
+bash "$MUTAGEN_ROOT/scripts/pause.sh" on --reason "investigating L4-World-004"
+bash "$MUTAGEN_ROOT/scripts/resume_after_escalation.sh" --slice-id L4-World-004 --host codex
+```
 
 **Known degradation on Codex:** the `codex_hooks` feature is still under
 development and disabled on Windows, so the plugin does not ship
@@ -44,7 +55,7 @@ globs; nothing blocks it). Reviewers are the backstop.
 
 | Plugin | Description |
 |--------|-------------|
-| [`mutagen`](plugins/mutagen/) | End-to-end agentic design workflow — thirteen personas, six commands/skills (elicit, slice, execute-next, amend-scope, status, setup-pushover), `PreToolUse` scope-enforcement hook *(Claude only)*, optional Pushover halt notifications, five-document upstream design bundle (PRD / ADR / DDD / ISC / DSD) with templates and authoring guides. |
+| [`mutagen`](plugins/mutagen/) | End-to-end agentic design workflow — thirteen personas, nine Claude commands (elicit, slice, execute-next, amend-scope, status, consolidate-advisories, setup-pushover, pause, resume) and seven Codex skills (the same set minus pause and resume), `PreToolUse` scope-enforcement hook *(Claude only)*, optional Pushover halt notifications, five-document upstream design bundle (PRD / ADR / DDD / ISC / DSD) with templates and authoring guides. |
 
 See [`plugins/mutagen/README.md`](plugins/mutagen/README.md) for the full story.
 
@@ -62,8 +73,8 @@ See [`plugins/mutagen/README.md`](plugins/mutagen/README.md) for the full story.
 │       ├── .claude-plugin/plugin.json  # Claude Code manifest
 │       ├── .codex-plugin/plugin.json   # Codex manifest
 │       ├── agents/                     # 13 Claude subagents + persona source-of-truth for Codex
-│       ├── commands/                   # 6 Claude slash commands
-│       ├── skills/                     # 6 Codex skills ($mutagen-*)
+│       ├── commands/                   # 9 Claude slash commands
+│       ├── skills/                     # 7 Codex skills ($mutagen-*)
 │       │   └── <skill>/SKILL.md + agents/openai.yaml
 │       ├── bin/                        # agent.sh / agent.ps1 / agents-parallel.sh — host-aware persona launchers
 │       ├── hooks/                      # Claude Code PreToolUse + PostToolUse

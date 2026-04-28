@@ -3,8 +3,8 @@
   "version": "0.2.3",
   "description": "End-to-end agentic design workflow. Thirteen personas execute PRD/ADR/DDD/ISC/DSD design bundles through Shredder's dependency-ordered slicing and Karai's reviewed dispatch.",
   "author": {
-    "name": "CHKDSK Labs",
-    "url": "https://github.com/ObtuseAglet/agentic_design_workflow"
+    "name": "ObtuseAglet",
+    "url": "https://github.com/ObtuseAglet"
   },
   "homepage": "https://github.com/ObtuseAglet/agentic_design_workflow",
   "repository": "https://github.com/ObtuseAglet/agentic_design_workflow",
