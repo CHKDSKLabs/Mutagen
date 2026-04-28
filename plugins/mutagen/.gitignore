@@ -1,0 +1,7 @@
+# The packaged harness binary is built locally per platform, not committed.
+# `bash plugins/mutagen/scripts/build_harness_binary.sh --release` puts the
+# binary at this path; consumers fetch it from a GitHub Release or build it
+# themselves. Tracking it bloats clones and ships the wrong architecture to
+# half the audience.
+bin/mutagen-harness
+bin/mutagen-harness.exe

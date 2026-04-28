@@ -27,18 +27,22 @@ claude --plugin-dir /path/to/agentic_design_workflow/plugins/mutagen
 
 Requires `bash`, `jq`, and `git` on PATH for the shell helpers. The slice-authoring flow, host-profile resolution, queue mutation helpers, active-slice stage rotation, Stage 2 structural gate, and final slice closure delegate to the Rust harness.
 
-The plugin now resolves the harness in this order:
+### Getting the harness binary
+
+The harness binary is **not committed to the repo** (it would be platform-specific and would bloat clones). The plugin resolves the harness in this order:
 
 1. `MUTAGEN_HARNESS_BIN`, when set to an executable.
-2. `plugins/mutagen/bin/mutagen-harness` or `mutagen-harness.exe`, when packaged with the plugin.
-3. `cargo run --manifest-path harness/Cargo.toml` as a source-checkout fallback.
+2. `plugins/mutagen/bin/mutagen-harness` or `mutagen-harness.exe`, when packaged locally.
+3. `cargo run --manifest-path harness/Cargo.toml` as a source-checkout fallback (requires `cargo`).
 4. `mutagen-harness` on `PATH`.
 
-For local packaging, build and copy the harness binary into the plugin:
+For most users the source-checkout fallback (#3) is enough — install Rust and the harness builds on first invocation. To package a binary at the canonical plugin path so the wrappers don't shell out to `cargo` every time:
 
 ```bash
 bash plugins/mutagen/scripts/build_harness_binary.sh --release
 ```
+
+That writes `plugins/mutagen/bin/mutagen-harness` (or `.exe` on Windows). The path is in `.gitignore`; this is a per-machine artifact, not something you commit.
 
 With a packaged binary, end users do not need `cargo` or `rustc`. Without a packaged binary, development checkouts still need Rust installed. Without `jq` the scope guard fails open with a warning; set `STRICT_GUARD=1` to fail closed instead.
 
