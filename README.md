@@ -1,4 +1,4 @@
-# agentic_design_workflow — mutagen marketplace
+# Mutagen — agentic design workflow marketplace
 
 A dual-harness plugin marketplace. Ships one plugin today — **`mutagen`** —
 with both a Claude Code manifest and a Codex manifest under the same plugin
@@ -9,7 +9,7 @@ root, so one directory feeds both CLIs.
 ### Claude Code
 
 ```
-/plugin marketplace add ObtuseAglet/agentic_design_workflow
+/plugin marketplace add CHKDSKLabs/Mutagen
 /plugin install mutagen@mutagen-marketplace
 ```
 
@@ -24,7 +24,7 @@ Clone this repo, then register the marketplace entry at
 your shell rc so the skill bodies can resolve it:
 
 ```bash
-export MUTAGEN_ROOT="/absolute/path/to/agentic_design_workflow/plugins/mutagen"
+export MUTAGEN_ROOT="/absolute/path/to/Mutagen/plugins/mutagen"
 ```
 
 Codex discovers skills under `plugins/mutagen/skills/<name>/SKILL.md`

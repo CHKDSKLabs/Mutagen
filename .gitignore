@@ -40,6 +40,9 @@ Thumbs.db
 dispatch.log
 dashboard.log
 
+# Release build artifacts (cross-compiled tarballs from build_portable_bundle.sh)
+/dist/
+
 # Claude / Codex local overrides
 .claude/settings.local.json
 .codex.local

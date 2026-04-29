@@ -3,11 +3,11 @@
   "version": "0.3.0",
   "description": "Agentic design workflow: April elicits the five upstream design documents, Shredder slices them into a dependency-ordered queue, and Karai dispatches Bebop / Baxter / Chaplin / Metalhead / Splinter / Tatsu / Krang through Bishop review and Tiger Claw adversarial QA, with Traag-style scope enforcement via PreToolUse hook.",
   "author": {
-    "name": "ObtuseAglet",
-    "url": "https://github.com/ObtuseAglet/agentic_design_workflow"
+    "name": "CHKDSK Labs",
+    "url": "https://github.com/CHKDSKLabs"
   },
-  "homepage": "https://github.com/ObtuseAglet/agentic_design_workflow",
-  "repository": "https://github.com/ObtuseAglet/agentic_design_workflow",
+  "homepage": "https://github.com/CHKDSKLabs/Mutagen",
+  "repository": "https://github.com/CHKDSKLabs/Mutagen",
   "license": "MIT",
   "keywords": [
     "workflow",

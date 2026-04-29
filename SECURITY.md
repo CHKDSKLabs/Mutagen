@@ -14,8 +14,8 @@ historical tags will not receive security fixes; upgrade.
 
 **Do not open a public GitHub issue for a security vulnerability.**
 
-Email a description of the issue to the address listed on the maintainer's
-GitHub profile (https://github.com/ObtuseAglet). Please include:
+Email a description of the issue to the address listed on the maintainer
+organisation's GitHub profile (https://github.com/CHKDSKLabs). Please include:
 
 - A description of the vulnerability and its impact.
 - Steps to reproduce, including a minimal example if possible.

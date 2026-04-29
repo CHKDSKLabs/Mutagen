@@ -9,7 +9,7 @@ The flow is **User ↔ April → Shredder → Karai → {Bebop | Baxter | Chapli
 The plugin is distributed through the marketplace at the root of this repository. Inside a Claude Code session:
 
 ```
-/plugin marketplace add ObtuseAglet/agentic_design_workflow
+/plugin marketplace add CHKDSKLabs/Mutagen
 /plugin install mutagen@mutagen-marketplace
 ```
 
@@ -22,7 +22,7 @@ Verify:
 For local development, point Claude Code at a checkout:
 
 ```bash
-claude --plugin-dir /path/to/agentic_design_workflow/plugins/mutagen
+claude --plugin-dir /path/to/Mutagen/plugins/mutagen
 ```
 
 Requires `bash`, `jq`, and `git` on PATH for the shell helpers. The slice-authoring flow, host-profile resolution, queue mutation helpers, active-slice stage rotation, Stage 2 structural gate, and final slice closure delegate to the Rust harness.
@@ -39,7 +39,7 @@ The harness binary is **not committed to the repo** (it would be platform-specif
 For most users:
 
 - **Have Rust installed?** The source-checkout fallback (#3 above) is enough. The first invocation will compile the harness; subsequent runs use the cached build.
-- **Don't want to install Rust?** Download a pre-built binary from the [GitHub Releases page](https://github.com/ObtuseAglet/agentic_design_workflow/releases) for your platform. Each tagged release ships archives for `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-apple-darwin`, `aarch64-apple-darwin`, and `x86_64-pc-windows-msvc`, each with a `.sha256` checksum. Extract the archive, then either drop `mutagen-harness` (or `.exe`) at `plugins/mutagen/bin/` or point `MUTAGEN_HARNESS_BIN` at it.
+- **Don't want to install Rust?** Download a pre-built binary from the [GitHub Releases page](https://github.com/CHKDSKLabs/Mutagen/releases) for your platform. Each tagged release ships archives for `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-apple-darwin`, `aarch64-apple-darwin`, and `x86_64-pc-windows-msvc`, each with a `.sha256` checksum. Extract the archive, then either drop `mutagen-harness` (or `.exe`) at `plugins/mutagen/bin/` or point `MUTAGEN_HARNESS_BIN` at it.
 - **Building from source for the canonical plugin-local path:** run
 
   ```bash

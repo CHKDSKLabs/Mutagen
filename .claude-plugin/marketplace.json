@@ -1,8 +1,8 @@
 {
   "name": "mutagen-marketplace",
   "owner": {
-    "name": "ObtuseAglet",
-    "url": "https://github.com/ObtuseAglet"
+    "name": "CHKDSK Labs",
+    "url": "https://github.com/CHKDSKLabs"
   },
   "metadata": {
     "description": "Agentic design workflow marketplace — plugins that package the April → Shredder → Karai → {Bebop | Baxter | Chaplin | Metalhead | Splinter | Tatsu | Krang} → Bishop → Tiger Claw pipeline with Traag-style scope enforcement.",
@@ -15,11 +15,11 @@
       "description": "End-to-end agentic design workflow: April interviews the user and authors the five upstream documents (PRD / ADR / DDD / ISC / DSD), Shredder slices the approved bundle, Karai dispatches executors through Bishop review and Tiger Claw adversarial QA, and a PreToolUse hook enforces per-slice filesystem scope.",
       "version": "0.3.0",
       "author": {
-        "name": "ObtuseAglet",
-        "url": "https://github.com/ObtuseAglet"
+        "name": "CHKDSK Labs",
+        "url": "https://github.com/CHKDSKLabs"
       },
-      "homepage": "https://github.com/ObtuseAglet/agentic_design_workflow",
-      "repository": "https://github.com/ObtuseAglet/agentic_design_workflow",
+      "homepage": "https://github.com/CHKDSKLabs/Mutagen",
+      "repository": "https://github.com/CHKDSKLabs/Mutagen",
       "license": "MIT",
       "keywords": [
         "workflow",

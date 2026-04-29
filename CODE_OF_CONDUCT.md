@@ -19,8 +19,8 @@ act as representatives of the project.
 
 ## Reporting
 
-Reports may be sent to the maintainer via the contact address listed on the
-maintainer's GitHub profile (https://github.com/ObtuseAglet). Reports will
+Reports may be sent to the maintainer organisation via the contact address
+listed on the GitHub profile (https://github.com/CHKDSKLabs). Reports will
 be reviewed and acted on as described in the Covenant's Enforcement
 Guidelines section.
 

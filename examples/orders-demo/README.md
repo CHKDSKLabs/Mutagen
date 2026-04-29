@@ -63,7 +63,7 @@ cp -r examples/orders-demo/docs/ADR /tmp/mutagen-orders-demo/docs/
 
 # Initialise the project capsule and run the workflow
 cd /tmp/mutagen-orders-demo
-bash /path/to/agentic_design_workflow/plugins/mutagen/scripts/project.sh init \
+bash /path/to/Mutagen/plugins/mutagen/scripts/project.sh init \
     --workspace-root . \
     --name orders-demo \
     --stack vite-express-sqlite \
