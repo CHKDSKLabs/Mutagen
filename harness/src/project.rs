@@ -1583,16 +1583,16 @@ pub fn preview_start(
         && process_running(state.pid)
     {
         let ready = preview_ready(&state.url);
-        return Ok(preview_lifecycle_result(
-            "already_running",
-            Some(state.pid),
-            true,
+        return Ok(preview_lifecycle_result(PreviewLifecycleInput {
+            status: "already_running",
+            pid: Some(state.pid),
+            running: true,
             ready,
-            state.url,
-            state.command,
+            url: state.url,
+            command: state.command,
             state_path,
             log_path,
-        ));
+        }));
     }
 
     if let Some(parent) = log_path.parent() {
@@ -1643,16 +1643,16 @@ pub fn preview_start(
         "exited"
     };
 
-    Ok(preview_lifecycle_result(
+    Ok(preview_lifecycle_result(PreviewLifecycleInput {
         status,
-        Some(state.pid),
+        pid: Some(state.pid),
         running,
         ready,
-        state.url,
-        state.command,
+        url: state.url,
+        command: state.command,
         state_path,
         log_path,
-    ))
+    }))
 }
 
 pub fn preview_status(
@@ -1663,16 +1663,16 @@ pub fn preview_status(
     let log_path = preview_log_path(&workspace_root);
 
     let Some(state) = load_preview_state_if_present(&state_path)? else {
-        return Ok(preview_lifecycle_result(
-            "stopped",
-            None,
-            false,
-            false,
-            String::new(),
-            String::new(),
+        return Ok(preview_lifecycle_result(PreviewLifecycleInput {
+            status: "stopped",
+            pid: None,
+            running: false,
+            ready: false,
+            url: String::new(),
+            command: String::new(),
             state_path,
             log_path,
-        ));
+        }));
     };
 
     let running = process_running(state.pid);
@@ -1685,16 +1685,16 @@ pub fn preview_status(
         "exited"
     };
 
-    Ok(preview_lifecycle_result(
+    Ok(preview_lifecycle_result(PreviewLifecycleInput {
         status,
-        Some(state.pid),
+        pid: Some(state.pid),
         running,
         ready,
-        state.url,
-        state.command,
+        url: state.url,
+        command: state.command,
         state_path,
         log_path,
-    ))
+    }))
 }
 
 pub fn preview_stop(
@@ -1705,16 +1705,16 @@ pub fn preview_stop(
     let log_path = preview_log_path(&workspace_root);
 
     let Some(state) = load_preview_state_if_present(&state_path)? else {
-        return Ok(preview_lifecycle_result(
-            "stopped",
-            None,
-            false,
-            false,
-            String::new(),
-            String::new(),
+        return Ok(preview_lifecycle_result(PreviewLifecycleInput {
+            status: "stopped",
+            pid: None,
+            running: false,
+            ready: false,
+            url: String::new(),
+            command: String::new(),
             state_path,
             log_path,
-        ));
+        }));
     };
 
     if process_running(state.pid) {
@@ -1732,16 +1732,16 @@ pub fn preview_stop(
 
     let status = if running { "stop_requested" } else { "stopped" };
 
-    Ok(preview_lifecycle_result(
+    Ok(preview_lifecycle_result(PreviewLifecycleInput {
         status,
-        Some(state.pid),
+        pid: Some(state.pid),
         running,
-        false,
-        state.url,
-        state.command,
+        ready: false,
+        url: state.url,
+        command: state.command,
         state_path,
         log_path,
-    ))
+    }))
 }
 
 pub fn preview_check(options: ProjectPreviewCheckOptions) -> Result<ProjectPreviewCheckResult> {
@@ -2820,8 +2820,12 @@ fn load_preview_state_if_present(path: &Path) -> Result<Option<ProjectPreviewSta
     Ok(Some(state))
 }
 
-fn preview_lifecycle_result(
-    status: &str,
+/// Argument bundle for `preview_lifecycle_result`. Bundles the eight inputs the
+/// six call sites used to pass positionally; named fields make the boolean
+/// flags self-documenting and keep the function under the clippy
+/// `too_many_arguments` threshold.
+struct PreviewLifecycleInput {
+    status: &'static str,
     pid: Option<u32>,
     running: bool,
     ready: bool,
@@ -2829,7 +2833,19 @@ fn preview_lifecycle_result(
     command: String,
     state_path: PathBuf,
     log_path: PathBuf,
-) -> ProjectPreviewLifecycleResult {
+}
+
+fn preview_lifecycle_result(input: PreviewLifecycleInput) -> ProjectPreviewLifecycleResult {
+    let PreviewLifecycleInput {
+        status,
+        pid,
+        running,
+        ready,
+        url,
+        command,
+        state_path,
+        log_path,
+    } = input;
     ProjectPreviewLifecycleResult {
         ok: matches!(status, "already_running" | "running_ready" | "stopped"),
         status: status.to_string(),

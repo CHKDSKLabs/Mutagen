@@ -18,28 +18,24 @@ fn prepare_selected_slice_claims_requested_slice_and_writes_state() {
         .expect("prepare-selected-slice should succeed");
 
     let evidence_bundle_path = match result {
-        PrepareSelectedSliceResult::Ready {
-            slice_id,
-            author_agent,
-            claimed,
-            degraded_capabilities,
-            host_profile,
-            evidence_bundle_path,
-            ..
-        } => {
-            assert_eq!(slice_id, "L1-orders-001");
-            assert_eq!(author_agent, "Bebop");
-            assert!(claimed);
-            assert!(degraded_capabilities.contains(&"parallel_dispatch".to_string()));
+        PrepareSelectedSliceResult::Ready { prepared } => {
+            assert_eq!(prepared.slice_id, "L1-orders-001");
+            assert_eq!(prepared.author_agent, "Bebop");
+            assert!(prepared.claimed);
+            assert!(
+                prepared
+                    .degraded_capabilities
+                    .contains(&"parallel_dispatch".to_string())
+            );
             assert_eq!(
-                host_profile.scope_enforcement,
+                prepared.host_profile.scope_enforcement,
                 ScopeEnforcementMode::Advisory
             );
             assert_eq!(
-                host_profile.parallel_dispatch,
+                prepared.host_profile.parallel_dispatch,
                 ParallelDispatchMode::SerialOnly
             );
-            evidence_bundle_path
+            prepared.evidence_bundle_path
         }
         other => panic!("expected ready result, got {other:?}"),
     };
@@ -86,11 +82,9 @@ fn prepare_selected_slice_allows_existing_in_progress_slice_without_reclaiming()
         .expect("prepare-selected-slice should succeed for in-progress slice");
 
     match result {
-        PrepareSelectedSliceResult::Ready {
-            slice_id, claimed, ..
-        } => {
-            assert_eq!(slice_id, "L1-orders-001");
-            assert!(!claimed);
+        PrepareSelectedSliceResult::Ready { prepared } => {
+            assert_eq!(prepared.slice_id, "L1-orders-001");
+            assert!(!prepared.claimed);
         }
         other => panic!("expected ready result, got {other:?}"),
     }

@@ -2,8 +2,10 @@ use anyhow::{Context, Result};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
-use crate::activation::{ActivateSliceOptions, PreparedSliceActivation, activate_slice};
-use crate::adapter::{HostExecutionProfile, HostKind, resolved_host_profile};
+use crate::activation::{
+    ActivateSliceOptions, PreparedSliceActivation, PreparedSliceReady, activate_slice,
+};
+use crate::adapter::{HostKind, resolved_host_profile};
 use crate::config::load_workflow_config_file;
 use crate::queue::{SliceQueue, SliceStatus};
 use crate::validation::load_queue_file;
@@ -30,25 +32,8 @@ pub enum SelectedSliceBlockReason {
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum PrepareSelectedSliceResult {
     Ready {
-        slice_id: String,
-        title: String,
-        author_agent: String,
-        layer: u32,
-        bounded_context: String,
-        objective: String,
-        review_required: bool,
-        attempts: u32,
-        context_to_update: String,
-        write_set: Vec<String>,
-        adjacent_scope_allowed: Vec<String>,
-        depends_on: Vec<String>,
-        active_state_path: String,
-        evidence_bundle_path: String,
-        queue_path: String,
-        host: HostKind,
-        degraded_capabilities: Vec<String>,
-        host_profile: HostExecutionProfile,
-        claimed: bool,
+        #[serde(flatten)]
+        prepared: Box<PreparedSliceReady>,
     },
     Blocked {
         slice_id: String,
@@ -125,26 +110,9 @@ fn ready_result(
     queue_path: &Path,
     activation: PreparedSliceActivation,
 ) -> PrepareSelectedSliceResult {
+    let queue_path = queue_path.to_string_lossy().into_owned();
     PrepareSelectedSliceResult::Ready {
-        slice_id: activation.slice.id,
-        title: activation.slice.title,
-        author_agent: activation.slice.author_agent,
-        layer: activation.slice.layer,
-        bounded_context: activation.slice.bounded_context,
-        objective: activation.slice.objective,
-        review_required: activation.slice.review_required,
-        attempts: activation.slice.attempts,
-        context_to_update: activation.slice.context_to_update,
-        write_set: activation.slice.write_set,
-        adjacent_scope_allowed: activation.slice.adjacent_scope_allowed,
-        depends_on: activation.slice.depends_on,
-        active_state_path: activation.active_state_path,
-        evidence_bundle_path: activation.evidence_bundle_path,
-        queue_path: queue_path.to_string_lossy().into_owned(),
-        host: activation.host,
-        degraded_capabilities: activation.degraded_capabilities,
-        host_profile: activation.host_profile,
-        claimed: activation.claimed,
+        prepared: Box::new(PreparedSliceReady::from_activation(activation, queue_path)),
     }
 }
 

@@ -21,6 +21,60 @@ pub struct PreparedSliceActivation {
     pub claimed: bool,
 }
 
+/// Flat, serialisable view of a prepared slice. Shared by `PrepareNextResult::Ready`
+/// and `PrepareSelectedSliceResult::Ready` so the JSON shape stays identical and
+/// both enums avoid the `large_enum_variant` clippy warning by boxing this struct
+/// in their `Ready` arm.
+#[derive(Debug, Serialize)]
+pub struct PreparedSliceReady {
+    pub slice_id: String,
+    pub title: String,
+    pub author_agent: String,
+    pub layer: u32,
+    pub bounded_context: String,
+    pub objective: String,
+    pub review_required: bool,
+    pub attempts: u32,
+    pub context_to_update: String,
+    pub write_set: Vec<String>,
+    pub adjacent_scope_allowed: Vec<String>,
+    pub depends_on: Vec<String>,
+    pub active_state_path: String,
+    pub evidence_bundle_path: String,
+    pub queue_path: String,
+    pub host: HostKind,
+    pub degraded_capabilities: Vec<String>,
+    pub host_profile: HostExecutionProfile,
+    pub claimed: bool,
+}
+
+impl PreparedSliceReady {
+    /// Convenience: build the flat view from an activation result plus the queue path.
+    pub fn from_activation(activation: PreparedSliceActivation, queue_path: String) -> Self {
+        Self {
+            slice_id: activation.slice.id,
+            title: activation.slice.title,
+            author_agent: activation.slice.author_agent,
+            layer: activation.slice.layer,
+            bounded_context: activation.slice.bounded_context,
+            objective: activation.slice.objective,
+            review_required: activation.slice.review_required,
+            attempts: activation.slice.attempts,
+            context_to_update: activation.slice.context_to_update,
+            write_set: activation.slice.write_set,
+            adjacent_scope_allowed: activation.slice.adjacent_scope_allowed,
+            depends_on: activation.slice.depends_on,
+            active_state_path: activation.active_state_path,
+            evidence_bundle_path: activation.evidence_bundle_path,
+            queue_path,
+            host: activation.host,
+            degraded_capabilities: activation.degraded_capabilities,
+            host_profile: activation.host_profile,
+            claimed: activation.claimed,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct ActivateSliceOptions<'a> {
     pub workspace_root: &'a Path,
