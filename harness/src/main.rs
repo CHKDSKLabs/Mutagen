@@ -1,5 +1,5 @@
-use anyhow::Result;
-use clap::{Parser, Subcommand};
+use anyhow::{Context, Result, bail};
+use clap::{Parser, Subcommand, ValueEnum};
 use mutagen_harness::adapter::{HostKind, adapter_for, resolved_host_profile};
 use mutagen_harness::amend_scope::{AmendScopeOptions, MutationKind, amend_scope};
 use mutagen_harness::cohort::{PrepareCohortOptions, prepare_cohort};
@@ -17,6 +17,10 @@ use mutagen_harness::config::load_workflow_config_file;
 use mutagen_harness::dashboard_server::{DashboardServeOptions, serve_dashboard};
 use mutagen_harness::dispatch::{AuthorDispatchKind, PrepareDispatchOptions, prepare_dispatch};
 use mutagen_harness::finalize::{FinalizeSliceOptions, finalize_slice};
+use mutagen_harness::inference::{ChatCompletionOptions, ChatMessage, complete_chat};
+use mutagen_harness::model_registry::{
+    InferenceProvider, find_model, list_models, list_models_for, resolve_provider_model_id,
+};
 use mutagen_harness::project::{
     ProjectAddFeatureOptions, ProjectApplyBlueprintOptions, ProjectCommandKind,
     ProjectCreateOptions, ProjectDashboardOptions, ProjectDoctorOptions,
@@ -47,6 +51,22 @@ use mutagen_harness::state_update::{ApplyStateUpdateOptions, apply_state_update_
 use mutagen_harness::structural::{StructuralCheckOptions, structural_check};
 use mutagen_harness::validation::validate_queue_file;
 use std::path::PathBuf;
+use std::time::Duration;
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum InferenceProviderArg {
+    Ollama,
+    Lmstudio,
+}
+
+impl InferenceProviderArg {
+    fn into_provider(self) -> InferenceProvider {
+        match self {
+            Self::Ollama => InferenceProvider::Ollama,
+            Self::Lmstudio => InferenceProvider::LmStudio,
+        }
+    }
+}
 
 #[derive(Debug, Parser)]
 #[command(name = "mutagen-harness")]
@@ -169,6 +189,47 @@ enum Command {
         workflow_config: PathBuf,
         #[arg(long, value_enum, default_value_t = HostKind::Stub)]
         host: HostKind,
+    },
+    SupportedModels {
+        /// Filter the registry to a specific provider (omit for all entries).
+        #[arg(long, value_enum)]
+        provider: Option<InferenceProviderArg>,
+    },
+    CompleteChat {
+        #[arg(long, value_enum)]
+        provider: InferenceProviderArg,
+        /// Either a registry key (e.g. `qwen2.5-coder-14b`) or a raw provider model id.
+        #[arg(long)]
+        model: String,
+        /// Override the provider's default endpoint.
+        #[arg(long)]
+        endpoint: Option<String>,
+        /// File path containing the user prompt body.
+        #[arg(long, conflicts_with = "prompt")]
+        prompt_file: Option<PathBuf>,
+        /// Inline user prompt body.
+        #[arg(long, conflicts_with = "prompt_file")]
+        prompt: Option<String>,
+        /// Optional system prompt.
+        #[arg(long)]
+        system: Option<String>,
+        /// Optional system prompt loaded from a file.
+        #[arg(long, conflicts_with = "system")]
+        system_file: Option<PathBuf>,
+        #[arg(long, default_value_t = 0.0)]
+        temperature: f32,
+        #[arg(long)]
+        max_tokens: Option<u32>,
+        #[arg(long)]
+        top_p: Option<f32>,
+        #[arg(long, default_value_t = 120)]
+        timeout_secs: u64,
+        /// Write the assistant text to this file in addition to stdout.
+        #[arg(long)]
+        output_file: Option<PathBuf>,
+        /// Print only the assistant text on stdout instead of the full JSON envelope.
+        #[arg(long)]
+        text_only: bool,
     },
     ValidateQueue {
         #[arg(long, default_value = "slices/queue.json")]
@@ -940,6 +1001,128 @@ fn main() -> Result<()> {
             let workflow_config = load_workflow_config_file(&workflow_config)?;
             let profile = resolved_host_profile(host, &workflow_config);
             println!("{}", serde_json::to_string_pretty(&profile)?);
+        }
+        Command::SupportedModels { provider } => {
+            let envelope = match provider {
+                Some(arg) => {
+                    let provider = arg.into_provider();
+                    serde_json::json!({
+                        "provider": provider.name(),
+                        "default_endpoint": provider.default_endpoint(),
+                        "models": list_models_for(provider),
+                    })
+                }
+                None => serde_json::json!({
+                    "providers": [
+                        {
+                            "name": InferenceProvider::Ollama.name(),
+                            "default_endpoint": InferenceProvider::Ollama.default_endpoint(),
+                        },
+                        {
+                            "name": InferenceProvider::LmStudio.name(),
+                            "default_endpoint": InferenceProvider::LmStudio.default_endpoint(),
+                        }
+                    ],
+                    "models": list_models(),
+                }),
+            };
+            println!("{}", serde_json::to_string_pretty(&envelope)?);
+        }
+        Command::CompleteChat {
+            provider,
+            model,
+            endpoint,
+            prompt_file,
+            prompt,
+            system,
+            system_file,
+            temperature,
+            max_tokens,
+            top_p,
+            timeout_secs,
+            output_file,
+            text_only,
+        } => {
+            let provider = provider.into_provider();
+
+            let prompt_text = match (prompt, prompt_file) {
+                (Some(text), None) => text,
+                (None, Some(path)) => std::fs::read_to_string(&path)
+                    .with_context(|| format!("failed to read prompt file {}", path.display()))?,
+                (None, None) => bail!("must supply either --prompt or --prompt-file"),
+                (Some(_), Some(_)) => unreachable!("clap conflicts_with prevents this"),
+            };
+
+            let system_text = match (system, system_file) {
+                (Some(text), None) => Some(text),
+                (None, Some(path)) => Some(std::fs::read_to_string(&path).with_context(|| {
+                    format!("failed to read system prompt file {}", path.display())
+                })?),
+                (None, None) => None,
+                (Some(_), Some(_)) => unreachable!("clap conflicts_with prevents this"),
+            };
+
+            let mut messages = Vec::new();
+            if let Some(system_text) = system_text {
+                messages.push(ChatMessage::system(system_text));
+            }
+            messages.push(ChatMessage::user(prompt_text));
+
+            // Surface unknown registry keys as a warning rather than an error so
+            // callers can pass a raw provider model id (`qwen2.5:14b-q5_K_M`)
+            // when they want a quant the registry doesn't enumerate.
+            let resolved_id = resolve_provider_model_id(provider, &model)
+                .map(|id| id.to_string())
+                .unwrap_or_else(|| model.clone());
+            if find_model(&model).is_none() && resolved_id == model {
+                eprintln!(
+                    "note: `{}` is not in the registry — passing it through as a raw {} model id",
+                    model,
+                    provider.name()
+                );
+            }
+
+            let endpoint = endpoint.unwrap_or_else(|| provider.default_endpoint().to_string());
+
+            let options = ChatCompletionOptions {
+                provider,
+                endpoint,
+                model_key_or_id: model,
+                messages,
+                temperature: Some(temperature),
+                max_tokens,
+                top_p,
+                timeout: Duration::from_secs(timeout_secs),
+            };
+
+            let response = complete_chat(&options)?;
+
+            if let Some(path) = output_file.as_ref() {
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent).with_context(|| {
+                        format!("failed to create parent directory for {}", path.display())
+                    })?;
+                }
+                let body = response.first_text().unwrap_or("");
+                std::fs::write(path, body)
+                    .with_context(|| format!("failed to write output file {}", path.display()))?;
+            }
+
+            if text_only {
+                println!("{}", response.first_text().unwrap_or(""));
+            } else {
+                println!("{}", serde_json::to_string_pretty(&serde_json::json!({
+                    "provider": provider.name(),
+                    "endpoint": options.endpoint,
+                    "model_key_or_id": options.model_key_or_id,
+                    "resolved_model_id": resolved_id,
+                    "id": response.id,
+                    "model": response.model,
+                    "text": response.first_text(),
+                    "finish_reason": response.choices.first().and_then(|c| c.finish_reason.clone()),
+                    "usage": response.usage,
+                }))?);
+            }
         }
         Command::ValidateQueue { queue } => {
             let report = validate_queue_file(&queue)?;
