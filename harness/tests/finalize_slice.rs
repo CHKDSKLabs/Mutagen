@@ -132,6 +132,7 @@ fn finalize_slice_writes_summary_dispatch_log_and_clears_active_state() {
     let entry: Value = serde_json::from_str(first_line).expect("dispatch log line should parse");
     assert_eq!(entry["slice_id"], "L1-orders-001");
     assert_eq!(entry["status"], "completed");
+    assert_eq!(entry["host"], "codex");
     assert_eq!(entry["state_verified"], true);
     assert_eq!(entry["summary_path"], "slices/L1-orders-001/summary.md");
 }

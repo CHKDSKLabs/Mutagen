@@ -50,6 +50,14 @@ pub struct ProjectStatusOptions {
 }
 
 #[derive(Debug, Clone)]
+pub struct ProjectIntakeOptions {
+    pub workspace_root: PathBuf,
+    pub prompt: String,
+    pub queue_feature: bool,
+    pub force: bool,
+}
+
+#[derive(Debug, Clone)]
 pub struct ProjectAddFeatureOptions {
     pub workspace_root: PathBuf,
     pub title: String,
@@ -290,6 +298,28 @@ pub struct ProjectStatusResult {
     pub last_build_log_entry: Option<Value>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectDesignBriefSummary {
+    pub path: String,
+    pub exists: bool,
+    pub excerpt: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectIntakeResult {
+    pub ok: bool,
+    pub status: String,
+    pub workspace_root: String,
+    pub intake_mode: String,
+    pub title: String,
+    pub prompt: String,
+    pub brief: ProjectDesignBriefSummary,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feature_flow: Option<ProjectFeatureFlowResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub queue_error: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectFeatureIntent {
     pub id: String,
@@ -477,6 +507,7 @@ pub struct ProjectFeatureActiveSlice {
     pub title: String,
     pub stage: String,
     pub active_agent: String,
+    pub host: HostKind,
     pub evidence_bundle_path: String,
 }
 
@@ -486,6 +517,7 @@ pub struct ProjectDashboardResult {
     pub status: String,
     pub workspace_root: String,
     pub project: ProjectStatusResult,
+    pub project_brief: ProjectDesignBriefSummary,
     pub feature_backlog: ProjectDashboardFeatureBacklog,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_feature: Option<ProjectFeatureProgressResult>,
@@ -1001,6 +1033,63 @@ pub fn status_project(options: ProjectStatusOptions) -> Result<ProjectStatusResu
     })
 }
 
+pub fn project_intake(options: ProjectIntakeOptions) -> Result<ProjectIntakeResult> {
+    let workspace_root = absolute_path(&options.workspace_root)?;
+    let prompt = options.prompt.trim();
+
+    if prompt.is_empty() {
+        bail!("project prompt is required");
+    }
+
+    let capsule_path = workspace_root.join(".mutagen/project.json");
+    let capsule = load_capsule(&capsule_path)?;
+    let brief_path = workspace_root.join(&capsule.design.brief);
+    let title = derive_project_intake_title(prompt);
+
+    write_project_brief_intake(&brief_path, &title, prompt)?;
+    let brief = load_project_brief_summary(&brief_path)?;
+
+    let mut ok = true;
+    let mut status = "brief_updated".to_string();
+    let mut feature_flow_result = None;
+    let mut queue_error = None;
+
+    if options.queue_feature {
+        match feature_flow(ProjectFeatureFlowOptions {
+            workspace_root: workspace_root.clone(),
+            title: title.clone(),
+            description: prompt.to_string(),
+            force: options.force,
+        }) {
+            Ok(result) => {
+                status = "brief_updated_and_feature_flow_ready".to_string();
+                feature_flow_result = Some(result);
+            }
+            Err(error) => {
+                ok = false;
+                status = "brief_updated_queue_failed".to_string();
+                queue_error = Some(error.to_string());
+            }
+        }
+    }
+
+    Ok(ProjectIntakeResult {
+        ok,
+        status,
+        workspace_root: display_path(&workspace_root),
+        intake_mode: if options.queue_feature {
+            "brief_and_queue".to_string()
+        } else {
+            "brief_only".to_string()
+        },
+        title,
+        prompt: prompt.to_string(),
+        brief,
+        feature_flow: feature_flow_result,
+        queue_error,
+    })
+}
+
 pub fn add_feature(options: ProjectAddFeatureOptions) -> Result<ProjectAddFeatureResult> {
     let workspace_root = absolute_path(&options.workspace_root)?;
     let title = options.title.trim();
@@ -1388,6 +1477,8 @@ pub fn feature_progress(
 
 pub fn dashboard_project(options: ProjectDashboardOptions) -> Result<ProjectDashboardResult> {
     let workspace_root = absolute_path(&options.workspace_root)?;
+    let capsule_path = workspace_root.join(".mutagen/project.json");
+    let capsule = load_capsule(&capsule_path)?;
     let project = status_project(ProjectStatusOptions {
         workspace_root: workspace_root.clone(),
     })?;
@@ -1396,12 +1487,14 @@ pub fn dashboard_project(options: ProjectDashboardOptions) -> Result<ProjectDash
     })?;
     let active_feature = active_feature_progress(&workspace_root)?;
     let feature_backlog = dashboard_feature_backlog(&workspace_root, features.features)?;
+    let project_brief = load_project_brief_summary(&workspace_root.join(&capsule.design.brief))?;
 
     Ok(ProjectDashboardResult {
         ok: true,
         status: project.status.clone(),
         workspace_root: display_path(&workspace_root),
         project,
+        project_brief,
         feature_backlog,
         active_feature,
     })
@@ -1974,7 +2067,7 @@ fn toolchain_requirements(stack: &str) -> Result<Vec<&'static str>> {
         "fastapi-react" => Ok(vec!["python", "npm"]),
         "aspnet-blazor" => Ok(vec!["dotnet"]),
         "rust-bevy" => Ok(vec!["cargo", "rustc"]),
-        stack => bail!("doctor is not implemented for stack `{stack}`"),
+        stack => bail!("unsupported stack `{stack}` for doctor checks"),
     }
 }
 
@@ -2248,6 +2341,110 @@ fn write_feature_brief(workspace_root: &Path, feature: &ProjectFeatureIntent) ->
     fs::write(&path, body).with_context(|| format!("failed to write {}", display_path(&path)))
 }
 
+fn write_project_brief_intake(brief_path: &Path, title: &str, prompt: &str) -> Result<()> {
+    if let Some(parent) = brief_path.parent() {
+        fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "failed to create parent directory for {}",
+                display_path(brief_path)
+            )
+        })?;
+    }
+
+    let existing = if brief_path.exists() {
+        fs::read_to_string(brief_path)
+            .with_context(|| format!("failed to read {}", display_path(brief_path)))?
+    } else {
+        "# Design Brief\n".to_string()
+    };
+
+    let timestamp = now_rfc3339()?;
+    let current_direction = format!("{prompt}\n");
+    let intake_entry = format!("### {timestamp} - {title}\n\n{prompt}\n");
+    let updated = append_project_brief_intake(&existing, &current_direction, &intake_entry);
+
+    fs::write(brief_path, updated)
+        .with_context(|| format!("failed to write {}", display_path(brief_path)))
+}
+
+fn append_project_brief_intake(
+    existing: &str,
+    current_direction: &str,
+    intake_entry: &str,
+) -> String {
+    let mut body = if existing.trim().is_empty() {
+        "# Design Brief\n".to_string()
+    } else {
+        existing.to_string()
+    };
+
+    if !body.starts_with("# Design Brief") {
+        body = format!("# Design Brief\n\n{}", body.trim_start());
+    }
+
+    let updated = upsert_markdown_section(&body, "Current direction", current_direction);
+    append_markdown_section_entry(&updated, "Intake log", intake_entry)
+}
+
+fn load_project_brief_summary(brief_path: &Path) -> Result<ProjectDesignBriefSummary> {
+    if !brief_path.exists() {
+        return Ok(ProjectDesignBriefSummary {
+            path: display_path(brief_path),
+            exists: false,
+            excerpt: String::new(),
+        });
+    }
+
+    let raw = fs::read_to_string(brief_path)
+        .with_context(|| format!("failed to read {}", display_path(brief_path)))?;
+    let excerpt = project_brief_excerpt(&raw);
+
+    Ok(ProjectDesignBriefSummary {
+        path: display_path(brief_path),
+        exists: true,
+        excerpt,
+    })
+}
+
+fn project_brief_excerpt(raw: &str) -> String {
+    if let Some(section) = markdown_section_body(raw, "Current direction") {
+        let excerpt = truncate_text(&normalize_text(&section), 240);
+        if !excerpt.is_empty() {
+            return excerpt;
+        }
+    }
+
+    truncate_text(
+        &normalize_text(
+            &raw.lines()
+                .filter(|line| !line.trim_start().starts_with('#'))
+                .collect::<Vec<_>>()
+                .join(" "),
+        ),
+        240,
+    )
+}
+
+fn derive_project_intake_title(prompt: &str) -> String {
+    let first_line = prompt
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("Project request");
+    let sentence = first_line
+        .split_terminator(['.', '!', '?'])
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or(first_line);
+    let normalized = normalize_text(sentence);
+
+    if normalized.is_empty() {
+        "Project request".to_string()
+    } else {
+        truncate_text(&normalized, 72)
+    }
+}
+
 fn append_feature_log(path: &Path, feature: &ProjectFeatureIntent) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).with_context(|| {
@@ -2510,6 +2707,7 @@ fn load_feature_active_slice(
         title: active_state.title,
         stage: format!("{:?}", active_state.stage).to_ascii_lowercase(),
         active_agent: active_state.active_agent,
+        host: active_state.host,
         evidence_bundle_path: active_state.evidence_bundle_path,
     }))
 }
@@ -2765,7 +2963,7 @@ fn feature_plan_stack_defaults(stack: &str) -> Result<(Vec<String>, Vec<String>)
                 "bash plugins/mutagen/scripts/project.sh verify-generated".to_string(),
             ],
         )),
-        stack => bail!("feature planning is not implemented for stack `{stack}`"),
+        stack => bail!("unsupported stack `{stack}` for feature planning"),
     }
 }
 
@@ -2933,10 +3131,14 @@ struct ScaffoldFile {
 
 fn scaffold_files(capsule: &ProjectCapsule) -> Result<Vec<ScaffoldFile>> {
     match capsule.stack.as_str() {
+        "nextjs-postgres" => Ok(nextjs_postgres_files(capsule)),
         "vite-express-sqlite" => Ok(vite_express_sqlite_files(capsule)),
+        "fastapi-react" => Ok(fastapi_react_files(capsule)),
+        "aspnet-blazor" => Ok(aspnet_blazor_files(capsule)),
+        "cloudflare-worker" => Ok(cloudflare_worker_files(capsule)),
         "rust-bevy" => Ok(rust_bevy_files(capsule)),
         stack => bail!(
-            "scaffold is not implemented for stack `{stack}` yet; supported scaffold stacks: vite-express-sqlite, rust-bevy"
+            "scaffold is not available for stack `{stack}`; run `project blueprints` for supported stacks"
         ),
     }
 }
@@ -3270,6 +3472,802 @@ The Vite preview runs at http://localhost:5173 and proxies API requests to Expre
     ]
 }
 
+fn nextjs_postgres_files(capsule: &ProjectCapsule) -> Vec<ScaffoldFile> {
+    vec![
+        scaffold_file(
+            "package.json",
+            &format!(
+                r#"{{
+  "name": "{}",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {{
+    "dev": "next dev",
+    "test": "node --test",
+    "build": "next build",
+    "start": "next start"
+  }},
+  "dependencies": {{
+    "next": "^14.2.3",
+    "pg": "^8.11.5",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  }},
+  "devDependencies": {{}}
+}}
+"#,
+                package_name(&capsule.name)
+            ),
+        ),
+        scaffold_file(
+            "app/layout.jsx",
+            &format!(
+                r#"import "./globals.css";
+
+export const metadata = {{
+  title: "{}",
+  description: "Generated by the Mutagen harness",
+}};
+
+export default function RootLayout({{ children }}) {{
+  return (
+    <html lang="en">
+      <body>{{children}}</body>
+    </html>
+  );
+}}
+"#,
+                capsule.name
+            ),
+        ),
+        scaffold_file(
+            "app/page.jsx",
+            &format!(
+                r#"import {{ listFallbackItems, postgresConnectionString }} from "../lib/items.js";
+
+export default function HomePage() {{
+  const items = listFallbackItems();
+  const databaseReady = Boolean(postgresConnectionString());
+
+  return (
+    <main className="shell">
+      <section className="workspace">
+        <p className="eyebrow">Next.js + Postgres</p>
+        <h1>{}</h1>
+        <p className="lede">
+          The scaffold is ready for app-router pages, route handlers, and a Postgres-backed service layer.
+        </p>
+        <div className="status">
+          <span>Database</span>
+          <strong>{{databaseReady ? "configured" : "waiting for DATABASE_URL"}}</strong>
+        </div>
+        <ul className="items">
+          {{items.map((item) => (
+            <li key={{item.id}}>{{item.name}}</li>
+          ))}}
+        </ul>
+      </section>
+    </main>
+  );
+}}
+"#,
+                capsule.name
+            ),
+        ),
+        scaffold_file(
+            "app/api/items/route.js",
+            r#"import { NextResponse } from "next/server";
+import { createFallbackItem, listFallbackItems } from "../../../lib/items.js";
+
+export async function GET() {
+  return NextResponse.json({ items: listFallbackItems() });
+}
+
+export async function POST(request) {
+  const body = await request.json();
+  const item = createFallbackItem(body?.name);
+
+  if (!item) {
+    return NextResponse.json(
+      { error: "Name required. The database is not a séance." },
+      { status: 400 },
+    );
+  }
+
+  return NextResponse.json({ items: listFallbackItems([item]) }, { status: 201 });
+}
+"#,
+        ),
+        scaffold_file(
+            "app/globals.css",
+            r#":root {
+  color: #15191f;
+  background: #f5f7fb;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body {
+  margin: 0;
+}
+
+.shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+}
+
+.workspace {
+  width: min(840px, 100%);
+}
+
+.eyebrow {
+  color: #4f6578;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0 0 18px;
+  font-size: clamp(2.4rem, 7vw, 5.2rem);
+  line-height: 0.95;
+}
+
+.lede {
+  max-width: 640px;
+  color: #526273;
+  font-size: 1.05rem;
+}
+
+.status,
+.items li {
+  border: 1px solid #d8e0e8;
+  border-radius: 8px;
+  background: white;
+  padding: 14px 16px;
+}
+
+.status {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 24px 0;
+}
+
+.items {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  list-style: none;
+}
+"#,
+        ),
+        scaffold_file(
+            "lib/items.js",
+            r#"const fallbackItems = [
+  { id: 1, name: "Wire the first product workflow" },
+  { id: 2, name: "Replace fallback storage with Postgres" },
+];
+
+export function postgresConnectionString() {
+  return process.env.DATABASE_URL || "";
+}
+
+export function normalizeItemName(name) {
+  return String(name || "").trim();
+}
+
+export function listFallbackItems(items = fallbackItems) {
+  return [...items];
+}
+
+export function createFallbackItem(name) {
+  const normalized = normalizeItemName(name);
+
+  if (!normalized) {
+    return null;
+  }
+
+  return {
+    id: Date.now(),
+    name: normalized,
+  };
+}
+"#,
+        ),
+        scaffold_file(
+            "tests/items.test.js",
+            r#"import assert from "node:assert/strict";
+import test from "node:test";
+import { createFallbackItem, normalizeItemName } from "../lib/items.js";
+
+test("normalizes item names", () => {
+  assert.equal(normalizeItemName("  first useful slice  "), "first useful slice");
+});
+
+test("refuses empty item names", () => {
+  assert.equal(createFallbackItem("   "), null);
+});
+"#,
+        ),
+        scaffold_file(
+            "README.md",
+            &format!(
+                r#"# {}
+
+Generated by the Mutagen harness.
+
+```bash
+npm install
+npm run dev
+```
+
+Set `DATABASE_URL` before replacing the fallback item service with Postgres queries.
+"#,
+                capsule.name
+            ),
+        ),
+        scaffold_file(
+            ".env.example",
+            "DATABASE_URL=postgres://user:pass@localhost:5432/app\n",
+        ),
+    ]
+}
+
+fn fastapi_react_files(capsule: &ProjectCapsule) -> Vec<ScaffoldFile> {
+    vec![
+        scaffold_file(
+            "package.json",
+            &format!(
+                r#"{{
+  "name": "{}",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {{
+    "dev": "node scripts/dev.mjs",
+    "test": "node --test tests/frontend.test.js",
+    "build": "vite build"
+  }},
+  "dependencies": {{
+    "@vitejs/plugin-react": "^4.2.1",
+    "vite": "^5.1.4",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  }},
+  "devDependencies": {{}}
+}}
+"#,
+                package_name(&capsule.name)
+            ),
+        ),
+        scaffold_file(
+            "requirements.txt",
+            "fastapi>=0.111,<1.0\nuvicorn[standard]>=0.29,<1.0\npytest>=8.0,<9.0\nhttpx>=0.27,<1.0\n",
+        ),
+        scaffold_file("api/__init__.py", ""),
+        scaffold_file(
+            "api/main.py",
+            r#"from fastapi import FastAPI
+from pydantic import BaseModel
+
+
+class ItemCreate(BaseModel):
+    name: str
+
+
+app = FastAPI(title="Mutagen generated API")
+items = [{"id": 1, "name": "Connect the first workflow"}]
+
+
+@app.get("/api/health")
+def health():
+    return {"ok": True, "status": "ready"}
+
+
+@app.get("/api/items")
+def list_items():
+    return {"items": items}
+
+
+@app.post("/api/items", status_code=201)
+def create_item(payload: ItemCreate):
+    name = payload.name.strip()
+
+    if not name:
+        return {"items": items, "warning": "Name required. Telepathy remains unsupported."}
+
+    item = {"id": len(items) + 1, "name": name}
+    items.insert(0, item)
+    return {"items": items}
+"#,
+        ),
+        scaffold_file(
+            "tests/test_api.py",
+            r#"from fastapi.testclient import TestClient
+
+from api.main import app
+
+
+def test_health_reports_ready():
+    client = TestClient(app)
+
+    response = client.get("/api/health")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ready"
+"#,
+        ),
+        scaffold_file(
+            "index.html",
+            r#"<div id="root"></div>
+<script type="module" src="/src/main.jsx"></script>
+"#,
+        ),
+        scaffold_file(
+            "src/main.jsx",
+            r#"import React from "react";
+import { createRoot } from "react-dom/client";
+import { App } from "./App.jsx";
+import "./styles.css";
+
+createRoot(document.getElementById("root")).render(<App />);
+"#,
+        ),
+        scaffold_file(
+            "src/App.jsx",
+            r#"import { useEffect, useState } from "react";
+
+export function App() {
+  const [items, setItems] = useState([]);
+
+  useEffect(() => {
+    fetch("/api/items")
+      .then((response) => response.json())
+      .then((payload) => setItems(payload.items));
+  }, []);
+
+  return (
+    <main className="shell">
+      <section className="workspace">
+        <p className="eyebrow">FastAPI + React</p>
+        <h1>API first, interface close behind.</h1>
+        <ul className="items">
+          {items.map((item) => (
+            <li key={item.id}>{item.name}</li>
+          ))}
+        </ul>
+      </section>
+    </main>
+  );
+}
+"#,
+        ),
+        scaffold_file(
+            "src/styles.css",
+            r#":root {
+  color: #18211f;
+  background: #eff6f3;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body {
+  margin: 0;
+}
+
+.shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+}
+
+.workspace {
+  width: min(760px, 100%);
+}
+
+.eyebrow {
+  color: #477064;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0 0 24px;
+  font-size: clamp(2.3rem, 7vw, 5rem);
+  line-height: 0.96;
+}
+
+.items {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.items li {
+  border: 1px solid #cde0d9;
+  border-radius: 8px;
+  background: white;
+  padding: 13px 15px;
+}
+"#,
+        ),
+        scaffold_file(
+            "tests/frontend.test.js",
+            r#"import assert from "node:assert/strict";
+import test from "node:test";
+
+test("frontend test harness is wired", () => {
+  assert.equal("fastapi-react".includes("react"), true);
+});
+"#,
+        ),
+        scaffold_file(
+            "scripts/dev.mjs",
+            r#"import { spawn } from "node:child_process";
+
+const children = [
+  spawn("python", ["-m", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"], { stdio: "inherit" }),
+  spawn("npx", ["vite", "--host", "0.0.0.0"], { stdio: "inherit" }),
+];
+
+function stop() {
+  for (const child of children) {
+    child.kill("SIGTERM");
+  }
+}
+
+process.on("SIGINT", stop);
+process.on("SIGTERM", stop);
+
+for (const child of children) {
+  child.on("exit", (code) => {
+    if (code && code !== 0) {
+      stop();
+      process.exit(code);
+    }
+  });
+}
+"#,
+        ),
+        scaffold_file(
+            "vite.config.js",
+            r#"import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    proxy: {
+      "/api": "http://localhost:8000",
+    },
+  },
+});
+"#,
+        ),
+        scaffold_file(
+            "README.md",
+            &format!(
+                r#"# {}
+
+Generated by the Mutagen harness.
+
+```bash
+python -m pip install -r requirements.txt
+npm install
+npm run dev
+```
+
+FastAPI runs on http://localhost:8000 and Vite runs on http://localhost:5173.
+"#,
+                capsule.name
+            ),
+        ),
+    ]
+}
+
+fn aspnet_blazor_files(capsule: &ProjectCapsule) -> Vec<ScaffoldFile> {
+    vec![
+        scaffold_file(
+            "MutagenGeneratedApp.csproj",
+            r#"<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+</Project>
+"#,
+        ),
+        scaffold_file(
+            "Program.cs",
+            r#"using MutagenGeneratedApp.Components;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services
+    .AddRazorComponents()
+    .AddInteractiveServerComponents();
+
+var app = builder.Build();
+
+app.UseStaticFiles();
+app.UseAntiforgery();
+app.MapRazorComponents<App>()
+    .AddInteractiveServerRenderMode();
+
+app.Run();
+"#,
+        ),
+        scaffold_file(
+            "Components/_Imports.razor",
+            r#"@using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.AspNetCore.Components.Web
+@using MutagenGeneratedApp.Components
+@using MutagenGeneratedApp.Components.Layout
+"#,
+        ),
+        scaffold_file(
+            "Components/App.razor",
+            &format!(
+                r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{}</title>
+    <base href="/" />
+    <link rel="stylesheet" href="app.css" />
+    <HeadOutlet />
+</head>
+<body>
+    <Routes />
+    <script src="_framework/blazor.web.js"></script>
+</body>
+</html>
+"#,
+                capsule.name
+            ),
+        ),
+        scaffold_file(
+            "Components/Routes.razor",
+            r#"<Router AppAssembly="typeof(Program).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="routeData" DefaultLayout="typeof(MainLayout)" />
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <LayoutView Layout="typeof(MainLayout)">
+            <main class="shell">
+                <section class="workspace">
+                    <p class="eyebrow">Not found</p>
+                    <h1>Nothing lives here yet.</h1>
+                </section>
+            </main>
+        </LayoutView>
+    </NotFound>
+</Router>
+"#,
+        ),
+        scaffold_file(
+            "Components/Layout/MainLayout.razor",
+            r#"@inherits LayoutComponentBase
+
+@Body
+"#,
+        ),
+        scaffold_file(
+            "Components/Pages/Home.razor",
+            &format!(
+                r#"@page "/"
+
+<PageTitle>{}</PageTitle>
+
+<main class="shell">
+    <section class="workspace">
+        <p class="eyebrow">ASP.NET Core + Blazor</p>
+        <h1>{}</h1>
+        <p class="lede">A server-rendered Blazor surface is ready for components, services, and real product behavior.</p>
+        <ul class="items">
+            <li>Define the first workflow</li>
+            <li>Add application services</li>
+            <li>Wire persistence when the domain stops changing its mind</li>
+        </ul>
+    </section>
+</main>
+"#,
+                capsule.name, capsule.name
+            ),
+        ),
+        scaffold_file(
+            "wwwroot/app.css",
+            r#":root {
+  color: #171b24;
+  background: #f3f5f8;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body {
+  margin: 0;
+}
+
+.shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+}
+
+.workspace {
+  width: min(820px, 100%);
+}
+
+.eyebrow {
+  color: #59677a;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0 0 18px;
+  font-size: clamp(2.3rem, 7vw, 5rem);
+  line-height: 0.96;
+}
+
+.lede {
+  color: #526073;
+  max-width: 660px;
+}
+
+.items {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.items li {
+  border: 1px solid #d7dde6;
+  border-radius: 8px;
+  background: white;
+  padding: 13px 15px;
+}
+"#,
+        ),
+        scaffold_file(
+            "README.md",
+            &format!(
+                r#"# {}
+
+Generated by the Mutagen harness.
+
+```bash
+dotnet restore
+dotnet watch run
+```
+
+The Blazor preview uses the configured ASP.NET Core launch profile or http://localhost:5000.
+"#,
+                capsule.name
+            ),
+        ),
+    ]
+}
+
+fn cloudflare_worker_files(capsule: &ProjectCapsule) -> Vec<ScaffoldFile> {
+    vec![
+        scaffold_file(
+            "package.json",
+            &format!(
+                r#"{{
+  "name": "{}",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {{
+    "dev": "wrangler dev src/index.js --local --port 8787",
+    "test": "node --test",
+    "build": "node scripts/build.mjs",
+    "deploy": "wrangler deploy"
+  }},
+  "dependencies": {{}},
+  "devDependencies": {{
+    "wrangler": "^3.57.2"
+  }}
+}}
+"#,
+                package_name(&capsule.name)
+            ),
+        ),
+        scaffold_file(
+            "src/index.js",
+            r#"export function createResponse(pathname) {
+  return {
+    ok: true,
+    message: "Cloudflare Worker scaffold is ready",
+    pathname,
+  };
+}
+
+export default {
+  async fetch(request) {
+    const url = new URL(request.url);
+
+    if (url.pathname === "/api/health") {
+      return Response.json(createResponse(url.pathname));
+    }
+
+    return new Response("Mutagen Worker scaffold", {
+      headers: { "content-type": "text/plain; charset=utf-8" },
+    });
+  },
+};
+"#,
+        ),
+        scaffold_file(
+            "test/index.test.js",
+            r#"import assert from "node:assert/strict";
+import test from "node:test";
+import { createResponse } from "../src/index.js";
+
+test("creates health payloads", () => {
+  assert.deepEqual(createResponse("/api/health"), {
+    ok: true,
+    message: "Cloudflare Worker scaffold is ready",
+    pathname: "/api/health",
+  });
+});
+"#,
+        ),
+        scaffold_file(
+            "scripts/build.mjs",
+            r#"const worker = await import("../src/index.js");
+
+if (typeof worker.default?.fetch !== "function") {
+  throw new Error("Worker default export must expose fetch. Tiny contract, huge consequences.");
+}
+
+console.log("worker build check passed");
+"#,
+        ),
+        scaffold_file(
+            "wrangler.toml",
+            &format!(
+                r#"name = "{}"
+main = "src/index.js"
+compatibility_date = "2024-06-01"
+"#,
+                package_name(&capsule.name)
+            ),
+        ),
+        scaffold_file(
+            "README.md",
+            &format!(
+                r#"# {}
+
+Generated by the Mutagen harness.
+
+```bash
+npm install
+npm run dev
+```
+
+The local Worker preview runs at http://localhost:8787.
+"#,
+                capsule.name
+            ),
+        ),
+    ]
+}
+
 fn scaffold_file(relative_path: &str, body: &str) -> ScaffoldFile {
     ScaffoldFile {
         relative_path: relative_path.to_string(),
@@ -3565,6 +4563,97 @@ fn relative_display(path: impl AsRef<str>) -> String {
 
 fn display_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
+}
+
+fn markdown_section_body(document: &str, heading: &str) -> Option<String> {
+    let section_header = format!("## {heading}");
+    let start = document.find(&section_header)?;
+    let after_header = document[start..]
+        .find('\n')
+        .map(|offset| start + offset + 1)
+        .unwrap_or(document.len());
+    let next_section = document[after_header..]
+        .find("\n## ")
+        .map(|offset| after_header + offset + 1)
+        .unwrap_or(document.len());
+    Some(document[after_header..next_section].trim().to_string())
+}
+
+fn upsert_markdown_section(document: &str, heading: &str, body: &str) -> String {
+    let section_header = format!("## {heading}");
+    let section_body = body.trim();
+
+    if let Some(start) = document.find(&section_header) {
+        let after_header = document[start..]
+            .find('\n')
+            .map(|offset| start + offset + 1)
+            .unwrap_or(document.len());
+        let next_section = document[after_header..]
+            .find("\n## ")
+            .map(|offset| after_header + offset + 1)
+            .unwrap_or(document.len());
+        let mut updated = String::new();
+        updated.push_str(document[..start].trim_end());
+        updated.push_str(&format!("\n\n{section_header}\n\n{section_body}\n"));
+        if next_section < document.len() {
+            updated.push('\n');
+            updated.push_str(document[next_section..].trim_start());
+        }
+        return updated.trim().to_string() + "\n";
+    }
+
+    let prefix = document.trim_end();
+    if prefix.is_empty() {
+        format!("{section_header}\n\n{section_body}\n")
+    } else {
+        format!("{prefix}\n\n{section_header}\n\n{section_body}\n")
+    }
+}
+
+fn append_markdown_section_entry(document: &str, heading: &str, entry: &str) -> String {
+    let section_header = format!("## {heading}");
+    let entry_body = entry.trim();
+
+    if let Some(start) = document.find(&section_header) {
+        let after_header = document[start..]
+            .find('\n')
+            .map(|offset| start + offset + 1)
+            .unwrap_or(document.len());
+        let next_section = document[after_header..]
+            .find("\n## ")
+            .map(|offset| after_header + offset + 1)
+            .unwrap_or(document.len());
+        let mut updated = String::new();
+        updated.push_str(document[..next_section].trim_end());
+        updated.push_str(&format!("\n\n{entry_body}\n"));
+        if next_section < document.len() {
+            updated.push('\n');
+            updated.push_str(document[next_section..].trim_start());
+        }
+        return updated.trim().to_string() + "\n";
+    }
+
+    let prefix = document.trim_end();
+    if prefix.is_empty() {
+        format!("{section_header}\n\n{entry_body}\n")
+    } else {
+        format!("{prefix}\n\n{section_header}\n\n{entry_body}\n")
+    }
+}
+
+fn normalize_text(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn truncate_text(value: &str, limit: usize) -> String {
+    let normalized = normalize_text(value);
+    if normalized.chars().count() <= limit {
+        return normalized;
+    }
+
+    let truncated = normalized.chars().take(limit).collect::<String>();
+    let trimmed = truncated.trim_end();
+    format!("{trimmed}...")
 }
 
 fn feature_id(title: &str) -> String {

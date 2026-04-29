@@ -5,6 +5,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::adapter::HostKind;
 use crate::notifications::{NotificationEvent, layer_complete_notification};
 use crate::queue::{
     BishopVerdict, KaraiStructuralVerdict, Slice, SliceStatus, SliceVerdicts, TigerClawVerdict,
@@ -67,6 +68,7 @@ struct DispatchLogEntry {
     slice_id: String,
     title: String,
     agent: String,
+    host: HostKind,
     layer: u32,
     bounded_context: String,
     status: DispatchStatus,
@@ -222,6 +224,7 @@ pub fn finalize_slice(options: FinalizeSliceOptions) -> Result<FinalizeSliceResu
         slice_id: slice_snapshot.id.clone(),
         title: slice_snapshot.title.clone(),
         agent: slice_snapshot.author_agent.clone(),
+        host: active_state.host,
         layer: slice_snapshot.layer,
         bounded_context: slice_snapshot.bounded_context.clone(),
         status: dispatch_status_for(tiger_claw_verdict),

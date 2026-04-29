@@ -57,6 +57,7 @@ if [[ -z "$WORKSPACE_ROOT" ]]; then
   exit 1
 fi
 
+mkdir -p "$WORKSPACE_ROOT"
 WORKSPACE_ROOT="$(cd "$WORKSPACE_ROOT" && pwd)"
 PROJECT_FILE="$WORKSPACE_ROOT/.mutagen/project.json"
 
@@ -85,8 +86,8 @@ if [[ -f "$PROJECT_FILE" ]]; then
 else
   printf '[miss] workspace %s\n' "$(display_path "$PROJECT_FILE")"
   printf '\n'
-  printf 'run bash plugins/mutagen/scripts/project.sh init before asking the dashboard to be helpful.\n' >&2
-  exit 1
+  printf 'dashboard will open in project setup mode.\n'
+  exit 0
 fi
 
 printf '\n'

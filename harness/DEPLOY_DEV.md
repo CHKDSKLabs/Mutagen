@@ -48,7 +48,7 @@ That wrapper does the small amount of housekeeping we actually want:
 
 - runs `doctor_dev.sh` first
 - resolves the workspace root
-- verifies `.mutagen/project.json` exists
+- opens project setup mode when `.mutagen/project.json` does not exist yet
 - builds a packaged harness binary when one is missing
 - reads default bind/port/host values from `harness/config/dev.toml`
 - launches `project dashboard-serve`
@@ -143,7 +143,13 @@ it or point `MUTAGEN_HARNESS_BIN` at an already-built binary.
 
 ### Workspace not initialized
 
-Create the project capsule first:
+Open the dashboard and create the project from the setup panel:
+
+```bash
+bash plugins/mutagen/scripts/dev_console.sh --workspace-root /path/to/workspace
+```
+
+You can still create the project capsule from the shell:
 
 ```bash
 bash plugins/mutagen/scripts/project.sh init \

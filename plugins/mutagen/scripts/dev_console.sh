@@ -50,6 +50,6 @@ fi
 
 bash "$DOCTOR_SCRIPT" --workspace-root "$WORKSPACE_ROOT"
 printf '\n'
-printf 'doctor passed. Launching the dashboard before the moment gets weird.\n'
+printf 'doctor finished. Launching the dashboard before the moment gets weird.\n'
 printf '\n'
 exec bash "$DASHBOARD_SCRIPT" "${ARGS[@]}"

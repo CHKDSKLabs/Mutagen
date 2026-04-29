@@ -22,15 +22,15 @@ use mutagen_harness::project::{
     ProjectCreateOptions, ProjectDashboardOptions, ProjectDoctorOptions,
     ProjectEnqueueFeatureOptions, ProjectExecuteFeatureOptions, ProjectFeatureFlowOptions,
     ProjectFeatureProgressOptions, ProjectFeatureStatusOptions, ProjectFeaturesOptions,
-    ProjectInitOptions, ProjectInspectOptions, ProjectPlanFeatureOptions,
+    ProjectInitOptions, ProjectInspectOptions, ProjectIntakeOptions, ProjectPlanFeatureOptions,
     ProjectPreviewCheckOptions, ProjectPreviewLifecycleOptions, ProjectPreviewPlanOptions,
     ProjectRepairOptions, ProjectRunCommandOptions, ProjectScaffoldOptions,
     ProjectSliceFeatureOptions, ProjectStatusOptions, ProjectVerifyGeneratedOptions, add_feature,
     apply_blueprint, create_project, dashboard_project, doctor_project, enqueue_feature,
     execute_feature, feature_flow, feature_progress, feature_status, init_project, inspect_project,
     list_blueprints, list_features, plan_feature, preview_check, preview_plan, preview_start,
-    preview_status, preview_stop, repair_project, run_project_command, scaffold_project,
-    slice_feature, status_project, verify_generated_project,
+    preview_status, preview_stop, project_intake, repair_project, run_project_command,
+    scaffold_project, slice_feature, status_project, verify_generated_project,
 };
 use mutagen_harness::queue::{
     BishopVerdict, KaraiStructuralVerdict, SliceStatus, TigerClawVerdict,
@@ -38,6 +38,11 @@ use mutagen_harness::queue::{
 use mutagen_harness::queue_update::{UpdateSliceOptions, update_slice};
 use mutagen_harness::review::{ReviewDecisionOptions, review_decision};
 use mutagen_harness::review_record::{RecordReviewVerdictOptions, record_review_verdict};
+use mutagen_harness::runner::{
+    DispatchStageOptions, QUEUE_CONTRACT_HASH_BASIS, RunCohortOnceOptions, RunExecuteNextOptions,
+    RunSliceOnceOptions, RunnerOutcome, dispatch_stage, queue_contract_hash, run_cohort_once,
+    run_execute_next, run_slice_once,
+};
 use mutagen_harness::runtime::{PrepareNextOptions, prepare_next};
 use mutagen_harness::scope_violation::{ScopeViolationOptions, scope_violation};
 use mutagen_harness::selected_slice::{PrepareSelectedSliceOptions, prepare_selected_slice};
@@ -125,6 +130,122 @@ enum Command {
         host: HostKind,
         #[arg(long = "member-json", required = true)]
         member_json: Vec<String>,
+    },
+    DispatchStage {
+        #[arg(long, default_value = ".")]
+        workspace_root: PathBuf,
+        #[arg(long, default_value = "slices/queue.json")]
+        queue: PathBuf,
+        #[arg(long, default_value = ".mutagen/state/active-slice.json")]
+        active_state: PathBuf,
+        #[arg(long, default_value = ".mutagen/state/author-output")]
+        author_output_dir: PathBuf,
+        #[arg(long, default_value = ".mutagen/state/dispatch")]
+        dispatch_root: PathBuf,
+        #[arg(long, default_value = "slices/slicemap.md")]
+        slicemap: PathBuf,
+        #[arg(long, default_value = "slices/queue.md")]
+        legacy: PathBuf,
+        #[arg(long, value_enum, default_value_t = HostKind::Codex)]
+        host: HostKind,
+        #[arg(long)]
+        qa_report: Option<PathBuf>,
+        #[arg(long)]
+        latest_qa_report: Option<PathBuf>,
+        #[arg(long)]
+        slice_id: String,
+        #[arg(long, value_enum)]
+        dispatch_kind: Option<AuthorDispatchKind>,
+        #[arg(long)]
+        mutagen_root: Option<PathBuf>,
+    },
+    RunSliceOnce {
+        #[arg(long, default_value = ".")]
+        workspace_root: PathBuf,
+        #[arg(long, default_value = "slices/queue.json")]
+        queue: PathBuf,
+        #[arg(long, default_value = ".mutagen/state/queue-validation.json")]
+        queue_validation: PathBuf,
+        #[arg(long, default_value = ".claude/workflow.json")]
+        workflow_config: PathBuf,
+        #[arg(long, default_value = ".mutagen/state/active-slice.json")]
+        active_state: PathBuf,
+        #[arg(long, default_value = ".mutagen/state/author-output")]
+        author_output_dir: PathBuf,
+        #[arg(long, default_value = ".mutagen/state/dispatch")]
+        dispatch_root: PathBuf,
+        #[arg(long, default_value = ".mutagen/state/dispatch-log.jsonl")]
+        dispatch_log: PathBuf,
+        #[arg(long, default_value = "slices")]
+        summary_root: PathBuf,
+        #[arg(long, default_value = "slices/slicemap.md")]
+        slicemap: PathBuf,
+        #[arg(long, default_value = "slices/queue.md")]
+        legacy: PathBuf,
+        #[arg(long, value_enum, default_value_t = HostKind::Codex)]
+        host: HostKind,
+        #[arg(long)]
+        slice_id: Option<String>,
+        #[arg(long)]
+        mutagen_root: Option<PathBuf>,
+    },
+    RunCohortOnce {
+        #[arg(long, default_value = ".")]
+        workspace_root: PathBuf,
+        #[arg(long, default_value = "slices/queue.json")]
+        queue: PathBuf,
+        #[arg(long, default_value = ".mutagen/state/queue-validation.json")]
+        queue_validation: PathBuf,
+        #[arg(long, default_value = ".claude/workflow.json")]
+        workflow_config: PathBuf,
+        #[arg(long, default_value = ".mutagen/state/active-slice.json")]
+        active_state: PathBuf,
+        #[arg(long, default_value = ".mutagen/state/author-output")]
+        author_output_dir: PathBuf,
+        #[arg(long, default_value = ".mutagen/state/dispatch")]
+        dispatch_root: PathBuf,
+        #[arg(long, default_value = ".mutagen/state/dispatch-log.jsonl")]
+        dispatch_log: PathBuf,
+        #[arg(long, default_value = "slices")]
+        summary_root: PathBuf,
+        #[arg(long, default_value = "slices/slicemap.md")]
+        slicemap: PathBuf,
+        #[arg(long, default_value = "slices/queue.md")]
+        legacy: PathBuf,
+        #[arg(long, value_enum, default_value_t = HostKind::Codex)]
+        host: HostKind,
+        #[arg(long)]
+        mutagen_root: Option<PathBuf>,
+    },
+    RunExecuteNext {
+        #[arg(long, default_value = ".")]
+        workspace_root: PathBuf,
+        #[arg(long, default_value = "slices/queue.json")]
+        queue: PathBuf,
+        #[arg(long, default_value = ".mutagen/state/queue-validation.json")]
+        queue_validation: PathBuf,
+        #[arg(long, default_value = ".claude/workflow.json")]
+        workflow_config: PathBuf,
+        #[arg(long, default_value = ".mutagen/state/active-slice.json")]
+        active_state: PathBuf,
+        #[arg(long, default_value = ".mutagen/state/author-output")]
+        author_output_dir: PathBuf,
+        #[arg(long, default_value = ".mutagen/state/dispatch")]
+        dispatch_root: PathBuf,
+        #[arg(long, default_value = ".mutagen/state/dispatch-log.jsonl")]
+        dispatch_log: PathBuf,
+        #[arg(long, default_value = "slices")]
+        summary_root: PathBuf,
+        #[arg(long, default_value = "slices/slicemap.md")]
+        slicemap: PathBuf,
+        #[arg(long, default_value = "slices/queue.md")]
+        legacy: PathBuf,
+        #[arg(long, value_enum, default_value_t = HostKind::Codex)]
+        host: HostKind,
+        #[arg(long, default_value_t = 1000)]
+        max_loops: u32,
+        #[arg(long)]
+        mutagen_root: Option<PathBuf>,
     },
     ApplyCohortDispatch {
         #[arg(long, default_value = ".")]
@@ -373,6 +494,16 @@ enum ProjectCommand {
         #[arg(long, default_value = ".")]
         workspace_root: PathBuf,
     },
+    Intake {
+        #[arg(long, default_value = ".")]
+        workspace_root: PathBuf,
+        #[arg(long)]
+        prompt: String,
+        #[arg(long)]
+        queue_feature: bool,
+        #[arg(long)]
+        force: bool,
+    },
     AddFeature {
         #[arg(long, default_value = ".")]
         workspace_root: PathBuf,
@@ -510,6 +641,16 @@ enum ProjectCommand {
     },
 }
 
+fn print_runner_outcome(outcome: RunnerOutcome) -> Result<()> {
+    println!("{}", serde_json::to_string_pretty(&outcome.payload)?);
+
+    if outcome.exit_code != 0 {
+        std::process::exit(outcome.exit_code);
+    }
+
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -565,6 +706,21 @@ fn main() -> Result<()> {
             }
             ProjectCommand::Status { workspace_root } => {
                 let result = status_project(ProjectStatusOptions { workspace_root })?;
+
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            }
+            ProjectCommand::Intake {
+                workspace_root,
+                prompt,
+                queue_feature,
+                force,
+            } => {
+                let result = project_intake(ProjectIntakeOptions {
+                    workspace_root,
+                    prompt,
+                    queue_feature,
+                    force,
+                })?;
 
                 println!("{}", serde_json::to_string_pretty(&result)?);
             }
@@ -869,6 +1025,134 @@ fn main() -> Result<()> {
 
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
+        Command::DispatchStage {
+            workspace_root,
+            queue,
+            active_state,
+            author_output_dir,
+            dispatch_root,
+            slicemap,
+            legacy,
+            host,
+            qa_report,
+            latest_qa_report,
+            slice_id,
+            dispatch_kind,
+            mutagen_root,
+        } => {
+            print_runner_outcome(dispatch_stage(DispatchStageOptions {
+                workspace_root,
+                queue_path: queue,
+                active_state_path: active_state,
+                author_output_dir,
+                dispatch_root,
+                slicemap_path: slicemap,
+                legacy_path: legacy,
+                host,
+                qa_report_path: qa_report,
+                latest_qa_report_path: latest_qa_report,
+                slice_id,
+                dispatch_kind,
+                mutagen_root,
+            }))?;
+        }
+        Command::RunSliceOnce {
+            workspace_root,
+            queue,
+            queue_validation,
+            workflow_config,
+            active_state,
+            author_output_dir,
+            dispatch_root,
+            dispatch_log,
+            summary_root,
+            slicemap,
+            legacy,
+            host,
+            slice_id,
+            mutagen_root,
+        } => {
+            print_runner_outcome(run_slice_once(RunSliceOnceOptions {
+                workspace_root,
+                queue_path: queue,
+                queue_validation_path: queue_validation,
+                workflow_config_path: workflow_config,
+                active_state_path: active_state,
+                author_output_dir,
+                dispatch_root,
+                dispatch_log_path: dispatch_log,
+                summary_root,
+                slicemap_path: slicemap,
+                legacy_path: legacy,
+                host,
+                slice_id,
+                mutagen_root,
+            }))?;
+        }
+        Command::RunCohortOnce {
+            workspace_root,
+            queue,
+            queue_validation,
+            workflow_config,
+            active_state,
+            author_output_dir,
+            dispatch_root,
+            dispatch_log,
+            summary_root,
+            slicemap,
+            legacy,
+            host,
+            mutagen_root,
+        } => {
+            print_runner_outcome(run_cohort_once(RunCohortOnceOptions {
+                workspace_root,
+                queue_path: queue,
+                queue_validation_path: queue_validation,
+                workflow_config_path: workflow_config,
+                active_state_path: active_state,
+                author_output_dir,
+                dispatch_root,
+                dispatch_log_path: dispatch_log,
+                summary_root,
+                slicemap_path: slicemap,
+                legacy_path: legacy,
+                host,
+                mutagen_root,
+            }))?;
+        }
+        Command::RunExecuteNext {
+            workspace_root,
+            queue,
+            queue_validation,
+            workflow_config,
+            active_state,
+            author_output_dir,
+            dispatch_root,
+            dispatch_log,
+            summary_root,
+            slicemap,
+            legacy,
+            host,
+            max_loops,
+            mutagen_root,
+        } => {
+            print_runner_outcome(run_execute_next(RunExecuteNextOptions {
+                workspace_root,
+                queue_path: queue,
+                queue_validation_path: queue_validation,
+                workflow_config_path: workflow_config,
+                active_state_path: active_state,
+                author_output_dir,
+                dispatch_root,
+                dispatch_log_path: dispatch_log,
+                summary_root,
+                slicemap_path: slicemap,
+                legacy_path: legacy,
+                host,
+                max_loops,
+                mutagen_root,
+            }))?;
+        }
         Command::ApplyCohortDispatch {
             workspace_root,
             queue,
@@ -943,6 +1227,13 @@ fn main() -> Result<()> {
         }
         Command::ValidateQueue { queue } => {
             let report = validate_queue_file(&queue)?;
+            let mut report = serde_json::to_value(report)?;
+            if let Ok(hash) = queue_contract_hash(&queue) {
+                report["queue"] = serde_json::json!(queue.to_string_lossy());
+                report["queue_contract_hash"] = serde_json::json!(hash);
+                report["queue_contract_hash_basis"] = serde_json::json!(QUEUE_CONTRACT_HASH_BASIS);
+                report["queue_contract_hash_algorithm"] = serde_json::json!("sha1");
+            }
             println!("{}", serde_json::to_string_pretty(&report)?);
         }
         Command::PrepareDispatch {

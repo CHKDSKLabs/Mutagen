@@ -4,15 +4,15 @@ use mutagen_harness::project::{
     ProjectCreateOptions, ProjectDashboardOptions, ProjectDoctorOptions,
     ProjectEnqueueFeatureOptions, ProjectExecuteFeatureOptions, ProjectFeatureFlowOptions,
     ProjectFeatureProgressOptions, ProjectFeatureStatusOptions, ProjectFeaturesOptions,
-    ProjectInitOptions, ProjectInspectOptions, ProjectPlanFeatureOptions,
+    ProjectInitOptions, ProjectInspectOptions, ProjectIntakeOptions, ProjectPlanFeatureOptions,
     ProjectPreviewCheckOptions, ProjectPreviewLifecycleOptions, ProjectPreviewPlanOptions,
     ProjectRepairOptions, ProjectRunCommandOptions, ProjectScaffoldOptions,
     ProjectSliceFeatureOptions, ProjectStatusOptions, ProjectVerifyGeneratedOptions, add_feature,
     apply_blueprint, create_project, dashboard_project, doctor_project, enqueue_feature,
     execute_feature, feature_flow, feature_progress, feature_status, init_project, inspect_project,
     list_blueprints, list_features, plan_feature, preview_check, preview_plan, preview_start,
-    preview_status, preview_stop, repair_project, run_project_command, scaffold_project,
-    slice_feature, status_project, verify_generated_project,
+    preview_status, preview_stop, project_intake, repair_project, run_project_command,
+    scaffold_project, slice_feature, status_project, verify_generated_project,
 };
 use mutagen_harness::queue::SliceQueue;
 use mutagen_harness::selected_slice::PrepareSelectedSliceResult;
@@ -467,6 +467,90 @@ fn project_add_feature_requires_title() {
     .expect_err("feature title should be required");
 
     assert!(error.to_string().contains("feature title is required"));
+}
+
+#[test]
+fn project_intake_updates_design_brief_without_queueing() {
+    let workspace = TestWorkspace::new("project-intake-brief");
+
+    create_project(ProjectCreateOptions {
+        workspace_root: workspace.root.clone(),
+        name: "Crew Scheduler".to_string(),
+        stack: "vite-express-sqlite".to_string(),
+        design_system: "plain-css".to_string(),
+        deploy_target: None,
+        force: false,
+    })
+    .expect("project create should succeed");
+
+    let result = project_intake(ProjectIntakeOptions {
+        workspace_root: workspace.root.clone(),
+        prompt: "Build a crew scheduling app for dispatchers. It should manage shifts, absences, and overtime."
+            .to_string(),
+        queue_feature: false,
+        force: false,
+    })
+    .expect("project intake should succeed");
+
+    assert!(result.ok);
+    assert_eq!(result.status, "brief_updated");
+    assert_eq!(result.intake_mode, "brief_only");
+    assert_eq!(result.title, "Build a crew scheduling app for dispatchers");
+    assert!(result.feature_flow.is_none());
+    assert!(result.queue_error.is_none());
+    assert!(result.brief.excerpt.contains("crew scheduling app"));
+
+    let brief = fs::read_to_string(workspace.root.join(".mutagen/design/brief.md"))
+        .expect("design brief should read");
+    assert!(brief.contains("## Current direction"));
+    assert!(brief.contains("## Intake log"));
+    assert!(brief.contains("Build a crew scheduling app for dispatchers."));
+
+    let features_log = workspace.root.join(".mutagen/state/features.jsonl");
+    assert!(!features_log.exists());
+}
+
+#[test]
+fn project_intake_can_queue_natural_language_request() {
+    let workspace = TestWorkspace::new("project-intake-queue");
+
+    create_project(ProjectCreateOptions {
+        workspace_root: workspace.root.clone(),
+        name: "Crew Scheduler".to_string(),
+        stack: "vite-express-sqlite".to_string(),
+        design_system: "plain-css".to_string(),
+        deploy_target: None,
+        force: false,
+    })
+    .expect("project create should succeed");
+
+    let result = project_intake(ProjectIntakeOptions {
+        workspace_root: workspace.root.clone(),
+        prompt: "Build a crew scheduling app for dispatchers. It should manage shifts, absences, and overtime."
+            .to_string(),
+        queue_feature: true,
+        force: false,
+    })
+    .expect("project intake should succeed");
+
+    assert!(result.ok);
+    assert_eq!(result.status, "brief_updated_and_feature_flow_ready");
+    assert_eq!(result.intake_mode, "brief_and_queue");
+    assert_eq!(result.title, "Build a crew scheduling app for dispatchers");
+    assert!(result.queue_error.is_none());
+    assert!(result.feature_flow.is_some());
+
+    let feature_flow = result.feature_flow.expect("feature flow should exist");
+    assert_eq!(
+        feature_flow.add_feature.feature.title,
+        "Build a crew scheduling app for dispatchers"
+    );
+    assert_eq!(feature_flow.enqueue_feature.enqueued_slice_ids.len(), 3);
+
+    let queue_raw = fs::read_to_string(workspace.root.join("slices/queue.json"))
+        .expect("queue should be readable");
+    let queue: SliceQueue = serde_json::from_str(&queue_raw).expect("valid queue");
+    assert_eq!(queue.slices.len(), 3);
 }
 
 #[test]
@@ -1326,13 +1410,9 @@ fn project_feature_progress_reports_active_slice() {
     assert_eq!(result.total, 3);
     assert_eq!(result.counts.pending, 2);
     assert_eq!(result.counts.in_progress, 1);
-    assert_eq!(
-        result
-            .active_slice
-            .expect("active slice should be shown")
-            .id,
-        result.slices[0].id
-    );
+    let active_slice = result.active_slice.expect("active slice should be shown");
+    assert_eq!(active_slice.id, result.slices[0].id);
+    assert_eq!(active_slice.host, HostKind::Stub);
 }
 
 #[test]
@@ -1381,6 +1461,14 @@ fn project_dashboard_summarizes_project_and_backlog() {
         force: false,
     })
     .expect("project create should succeed");
+    project_intake(ProjectIntakeOptions {
+        workspace_root: workspace.root.clone(),
+        prompt: "Build a crew scheduling app for dispatchers. It should manage shifts, absences, and overtime."
+            .to_string(),
+        queue_feature: false,
+        force: false,
+    })
+    .expect("project intake should succeed");
     add_feature(ProjectAddFeatureOptions {
         workspace_root: workspace.root.clone(),
         title: "Add due dates".to_string(),
@@ -1401,6 +1489,13 @@ fn project_dashboard_summarizes_project_and_backlog() {
     assert_eq!(result.feature_backlog.planned, 0);
     assert_eq!(result.feature_backlog.ready, 0);
     assert_eq!(result.feature_backlog.in_queue, 0);
+    assert!(result.project_brief.exists);
+    assert!(
+        result
+            .project_brief
+            .excerpt
+            .contains("crew scheduling app for dispatchers")
+    );
     assert!(result.active_feature.is_none());
 }
 
@@ -1464,7 +1559,25 @@ fn project_blueprint_catalog_lists_supported_stacks() {
         result
             .blueprints
             .iter()
+            .any(|blueprint| blueprint.stack == "vite-express-sqlite")
+    );
+    assert!(
+        result
+            .blueprints
+            .iter()
+            .any(|blueprint| blueprint.stack == "fastapi-react")
+    );
+    assert!(
+        result
+            .blueprints
+            .iter()
             .any(|blueprint| blueprint.stack == "aspnet-blazor")
+    );
+    assert!(
+        result
+            .blueprints
+            .iter()
+            .any(|blueprint| blueprint.stack == "cloudflare-worker")
     );
     assert!(
         result
@@ -1683,6 +1796,138 @@ fn project_scaffold_materializes_rust_bevy_project() {
     assert!(manifest.contains("bevy = \"0.18.1\""));
     assert!(main.contains("title: \"Tiny Planet\".to_string()"));
     assert!(main.contains("commands.spawn(Camera2d);"));
+}
+
+#[test]
+fn project_scaffold_materializes_all_catalog_web_and_service_stacks() {
+    let cases = vec![
+        (
+            "nextjs-postgres",
+            vec![
+                "package.json",
+                "app/layout.jsx",
+                "app/page.jsx",
+                "app/api/items/route.js",
+                "app/globals.css",
+                "lib/items.js",
+                "tests/items.test.js",
+                ".env.example",
+                "README.md",
+            ],
+            vec![
+                ("package.json", "\"dev\": \"next dev\""),
+                ("lib/items.js", "postgresConnectionString"),
+            ],
+        ),
+        (
+            "fastapi-react",
+            vec![
+                "package.json",
+                "requirements.txt",
+                "api/__init__.py",
+                "api/main.py",
+                "tests/test_api.py",
+                "index.html",
+                "src/main.jsx",
+                "src/App.jsx",
+                "src/styles.css",
+                "tests/frontend.test.js",
+                "scripts/dev.mjs",
+                "vite.config.js",
+                "README.md",
+            ],
+            vec![
+                ("package.json", "\"dev\": \"node scripts/dev.mjs\""),
+                ("api/main.py", "FastAPI"),
+            ],
+        ),
+        (
+            "aspnet-blazor",
+            vec![
+                "MutagenGeneratedApp.csproj",
+                "Program.cs",
+                "Components/_Imports.razor",
+                "Components/App.razor",
+                "Components/Routes.razor",
+                "Components/Layout/MainLayout.razor",
+                "Components/Pages/Home.razor",
+                "wwwroot/app.css",
+                "README.md",
+            ],
+            vec![
+                ("MutagenGeneratedApp.csproj", "Microsoft.NET.Sdk.Web"),
+                ("Program.cs", "MapRazorComponents<App>()"),
+            ],
+        ),
+        (
+            "cloudflare-worker",
+            vec![
+                "package.json",
+                "src/index.js",
+                "test/index.test.js",
+                "scripts/build.mjs",
+                "wrangler.toml",
+                "README.md",
+            ],
+            vec![
+                (
+                    "package.json",
+                    "\"dev\": \"wrangler dev src/index.js --local --port 8787\"",
+                ),
+                ("src/index.js", "createResponse"),
+            ],
+        ),
+    ];
+
+    for (stack, expected_paths, content_checks) in cases {
+        let workspace_name = format!("project-scaffold-{stack}");
+        let workspace = TestWorkspace::new(&workspace_name);
+
+        init_project(ProjectInitOptions {
+            workspace_root: workspace.root.clone(),
+            name: format!("{stack} App"),
+            stack: stack.to_string(),
+            design_system: "plain-css".to_string(),
+            deploy_target: None,
+            force: false,
+        })
+        .expect("project init should succeed");
+        apply_blueprint(ProjectApplyBlueprintOptions {
+            workspace_root: workspace.root.clone(),
+            stack: None,
+        })
+        .expect("blueprint apply should succeed");
+
+        let result = scaffold_project(ProjectScaffoldOptions {
+            workspace_root: workspace.root.clone(),
+            force: false,
+        })
+        .expect("project scaffold should succeed");
+
+        assert!(result.ok, "{stack} scaffold should be ok");
+        assert_eq!(result.status, "scaffolded");
+        assert_eq!(result.stack, stack);
+
+        for path in expected_paths {
+            assert!(
+                workspace.root.join(path).exists(),
+                "{path} should exist for {stack}"
+            );
+            assert!(
+                result.created_paths.contains(&path.to_string()),
+                "{path} should be reported as created for {stack}"
+            );
+        }
+
+        for (path, expected) in content_checks {
+            let body =
+                fs::read_to_string(workspace.root.join(path)).expect("scaffold file should read");
+            assert!(
+                body.contains(expected),
+                "{path} should contain `{expected}` for {stack}"
+            );
+        }
+    }
 }
 
 #[test]

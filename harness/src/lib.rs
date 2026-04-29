@@ -19,6 +19,7 @@ pub mod queue;
 pub mod queue_update;
 pub mod review;
 pub mod review_record;
+pub mod runner;
 pub mod runtime;
 pub mod scope_violation;
 pub mod selected_slice;

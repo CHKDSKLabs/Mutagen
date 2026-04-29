@@ -8,6 +8,7 @@
     "slice_id",
     "title",
     "agent",
+    "host",
     "layer",
     "bounded_context",
     "status",
@@ -31,6 +32,10 @@
     "agent": {
       "type": "string",
       "minLength": 1
+    },
+    "host": {
+      "type": "string",
+      "enum": ["stub", "codex", "claude"]
     },
     "layer": {
       "type": "integer",

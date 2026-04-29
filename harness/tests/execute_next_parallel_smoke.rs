@@ -400,8 +400,8 @@ unset FAIL_STRUCTURAL_SLICE SHARED_QA_CONFLICT || true
 
 cd "{repo_root_wsl}"
 mkdir -p "{workspace_wsl}/.mutagen/state"
-bash plugins/mutagen/scripts/validate_queue.sh "{workspace_wsl}/slices/queue.json" > "{queue_validation_wsl}"
-CLAUDE_BIN="$fake_claude" bash plugins/mutagen/scripts/run_execute_next.sh \
+cargo run --quiet --manifest-path "{repo_root_wsl}/harness/Cargo.toml" -- validate-queue --queue "{workspace_wsl}/slices/queue.json" > "{queue_validation_wsl}"
+MUTAGEN_ROOT="{repo_root_wsl}/plugins/mutagen" CLAUDE_BIN="$fake_claude" cargo run --quiet --manifest-path "{repo_root_wsl}/harness/Cargo.toml" -- run-execute-next \
   --workspace-root "{workspace_wsl}" \
   --queue "{workspace_wsl}/slices/queue.json" \
   --queue-validation "{queue_validation_wsl}" \

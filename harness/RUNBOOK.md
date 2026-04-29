@@ -256,6 +256,25 @@ bash plugins/mutagen/scripts/project.sh feature-flow \
 `enqueue-feature` in one pass. The individual commands remain available for
 inspection-first workflows.
 
+Capture project intent in natural prose:
+
+```bash
+bash plugins/mutagen/scripts/project.sh intake \
+  --prompt "Build a crew scheduling app for dispatchers. It should manage shifts, absences, and overtime."
+```
+
+Turn that same natural-language request into queued work:
+
+```bash
+bash plugins/mutagen/scripts/project.sh intake \
+  --prompt "Build a crew scheduling app for dispatchers. It should manage shifts, absences, and overtime." \
+  --queue-feature
+```
+
+`intake` writes the request into `.mutagen/design/brief.md`. With
+`--queue-feature`, it also derives a request title and runs the normal
+`feature-flow` bridge behind the scenes.
+
 Prepare the next queued slice for a feature:
 
 ```bash
@@ -281,8 +300,10 @@ Load a project dashboard snapshot:
 bash plugins/mutagen/scripts/project.sh dashboard
 ```
 
-`dashboard` combines project health, preview state, build history, feature
-backlog, and active feature progress into one JSON response for a UI layer.
+`dashboard` combines project health, design-brief summary, preview state, build
+history, request backlog, and active execution progress into one JSON response
+for a UI layer. The served dashboard layers build readiness on top through
+`/api/build-readiness`.
 
 Serve the local dashboard UI:
 
@@ -291,9 +312,17 @@ bash plugins/mutagen/scripts/project.sh dashboard-serve --port 7788
 ```
 
 `dashboard-serve` hosts a local HTML control panel plus JSON endpoints for
-`dashboard`, `feature-flow`, `execute-feature`, `feature-progress`,
-`preview-plan`, `preview-start`, `preview-check`, `preview-stop`,
-`run-command`, and `verify-generated`.
+`dashboard`, `project-blueprints`, `project-create`, `builder-thread`,
+`builder-message`, `design-bundle`, `design-doc`, `design-doc-seed`,
+`design-bundle-seed`, `build-readiness`, `execution-run`, `execution-jobs`,
+`execution-job`, `execution-cancel`, `project-intake`, `feature-flow`,
+`execute-feature`, `feature-progress`, `preview-plan`, `preview-start`,
+`preview-check`, `preview-stop`, `run-command`, and `verify-generated`.
+
+When the selected workspace does not have `.mutagen/project.json`, the
+dashboard opens in project setup mode. From there it can create the capsule,
+apply the selected stack blueprint, and materialize the scaffold without a
+separate shell command.
 
 The UI also exposes recent build history and a preview log tail so the dashboard
 can answer "what just happened?" without dropping back to the shell.
@@ -317,6 +346,165 @@ timeline for operator context.
 It also includes a bootstrap health strip for first-run recovery: doctor
 status, missing scaffold paths, setup execution, and scaffold repair from the
 same control surface.
+
+The builder conversation accepts plain-English project requests and stores the
+thread in `.mutagen/state/builder-thread.jsonl`. A turn can be kept as a note,
+saved into the design brief, or saved and queued as executable work, so the
+user does not need to think in `feature-flow` terms just to tell the system
+what they want.
+
+The design bundle workbench reads the capsule-managed design docs:
+`.mutagen/design/brief.md`, `docs/PRD.md`, `docs/ADR.md`, `docs/DDD.md`,
+`docs/ISC.md`, and `docs/DSD.md`. It reports missing/draft/ready status,
+shows excerpts, lets the operator edit and save a document, and can seed a
+starter draft from the current project direction.
+
+The build readiness gate combines capsule/scaffold health, design bundle
+readiness, setup/test/build history, preview configuration, preview reachability,
+and queue state into one preflight result. The dashboard disables prepare/advance
+execution actions while blocker checks are failing. Preview reachability is a
+warning rather than a blocker, so the operator can prepare work without keeping
+the dev server running purely for ceremony.
+
+Each readiness check includes a guided repair action. `Fix next blocker` runs
+the first available repair for the current blocker, while `Run safe repairs`
+can seed missing or draft design docs, repair scaffold files, run setup/test/build
+commands, and start/check preview. It does not queue new work and does not start
+the execution loop; those remain explicit operator actions because surprise
+automation is how dashboards develop trust issues.
+
+The dashboard also has an inference-host selector. Choose `codex` or `claude`
+from the UI and the setting is persisted under `.mutagen/state/` for that
+workspace, so `execute-feature` and `prepare-next` actions from the dashboard
+use the selected host instead of only the server's launch-time default.
+
+The execution console wraps the plugin runner instead of replacing it. `Run
+Harness Loop` starts `plugins/mutagen/scripts/run_execute_next.sh` in the
+background with the selected inference host once build readiness reports
+`can_execute: true`. Job metadata and per-run stdout/stderr logs are persisted
+under `.mutagen/state/dashboard-jobs/`, and the console exposes current/last
+status, terminal payload, completed count, and log tails. Terminal states are
+recorded as `queue_clear`, `stalled`, `escalated`, `queue_validation_failed`,
+`failed`, or `cancelled`.
+
+The dashboard also has a second `Terminal` tab for operators who want the
+straight pipe. It runs shell commands from the selected workspace root and
+records terminal jobs under `.mutagen/state/dashboard-terminal/`.
+
+The terminal configures these environment variables for every command:
+
+```text
+MUTAGEN_WORKSPACE_ROOT=/path/to/generated/project
+MUTAGEN_HARNESS_BIN=/path/to/plugins/mutagen/bin/mutagen-harness
+MUTAGEN_RUN_EXECUTE_NEXT=/path/to/plugins/mutagen/scripts/run_execute_next.sh
+```
+
+Useful terminal commands:
+
+```bash
+$MUTAGEN_HARNESS_BIN project status
+$MUTAGEN_HARNESS_BIN project doctor
+$MUTAGEN_HARNESS_BIN project verify-generated
+$MUTAGEN_RUN_EXECUTE_NEXT --workspace-root $MUTAGEN_WORKSPACE_ROOT --host codex
+codex exec "Use the Mutagen harness in this workspace. Check status, then propose the next harness action."
+claude -p "Use the Mutagen harness in this workspace. Check status, then propose the next harness action."
+```
+
+The buttons at the bottom of the terminal tab insert these commands so they can
+be reviewed and edited before running. Raw stdout and stderr are stored per job;
+the UI shows a readable summary first and keeps the raw output available when
+the machine starts speaking fluent plumbing.
+
+The older `/api/harness-chat` endpoint remains available for compatibility, but
+the dashboard tab now uses `/api/harness-terminal` for direct system access.
+
+Dashboard harness build flow:
+
+1. Install or refresh the plugin, then use the bundled harness binary from the
+   plugin. Rebuild it from this repo when developing the harness itself:
+
+   ```bash
+   bash plugins/mutagen/scripts/build_harness_binary.sh --debug
+   ```
+
+2. Start the dashboard against the workspace that should become the generated
+   project:
+
+   ```bash
+   bash plugins/mutagen/scripts/dashboard_dev.sh --workspace-root /path/to/workspace
+   ```
+
+3. If the workspace is empty, use `Project setup` to create the capsule,
+   choose a blueprint, and scaffold the app. The current blueprints include
+   `nextjs-postgres`, `vite-express-sqlite`, `fastapi-react`,
+   `aspnet-blazor`, `cloudflare-worker`, and `rust-bevy`.
+
+4. Use `Builder conversation` as the project prompt box. Write the product in
+   plain prose, then choose one of:
+   `Send` to keep context only, `Save Direction` to update the design brief, or
+   `Queue Work` to update direction and create executable queue work.
+
+5. Use `Design bundle` to seed or edit the brief, PRD, ADR, DDD, ISC, and DSD.
+   `Run safe repairs` can seed all missing or draft documents through
+   `/api/design-bundle-seed`; it will not queue work or start execution.
+
+6. Use `Build readiness` as the gate. `Fix next blocker` repairs the first
+   failing check with a known machine action. `Run safe repairs` may repair the
+   scaffold, run doctor/setup/test/build, seed design docs, and start/check
+   preview. It intentionally does not press the big red "let the agents loose"
+   button for you.
+
+7. Choose the inference host in `Inference host`. Use `stub` for smoke checks,
+   `codex` for Codex-driven execution, or `claude` for Claude-driven execution
+   where that host is installed and authenticated.
+
+8. When `Build readiness` reports `can_execute: true`, use `Execution console`
+   and press `Run Harness Loop`. This runs the authoritative plugin loop,
+   `plugins/mutagen/scripts/run_execute_next.sh`, in the background.
+
+9. Watch `Execution console`, `Activity feed`, `Queue control`, and `Slice
+   artifacts`. If a run stops:
+   `queue_clear` means all currently ready work is done,
+   `stalled` means dependencies or blocked slices need attention,
+   `escalated` means inspect review artifacts before continuing,
+   `queue_validation_failed` means fix `slices/queue.json`,
+   `failed` means inspect the job stderr/log tail,
+   and `cancelled` means the operator stopped the run.
+
+10. Queue the next natural-language request from the builder conversation and
+    repeat the readiness and execution cycle.
+
+Dashboard endpoint equivalents:
+
+```bash
+curl -s http://127.0.0.1:7788/api/build-readiness
+curl -s -X POST -H 'Content-Type: application/json' \
+  --data '{}' \
+  http://127.0.0.1:7788/api/design-bundle-seed
+curl -s -X POST -H 'Content-Type: application/json' \
+  --data '{"message":"Build the first useful project workflow.","action":"queue_work"}' \
+  http://127.0.0.1:7788/api/builder-message
+curl -s -X POST -H 'Content-Type: application/json' \
+  --data '{"host":"codex"}' \
+  http://127.0.0.1:7788/api/inference-host
+curl -s -X POST -H 'Content-Type: application/json' \
+  --data '{}' \
+  http://127.0.0.1:7788/api/execution-run
+curl -s http://127.0.0.1:7788/api/execution-jobs
+curl -s 'http://127.0.0.1:7788/api/execution-job?id=execution-...'
+curl -s -X POST -H 'Content-Type: application/json' \
+  --data '{"id":"execution-..."}' \
+  http://127.0.0.1:7788/api/execution-cancel
+```
+
+For smoke testing the execution console without launching the agent loop, call
+`/api/execution-run` with `dry_run: true`:
+
+```bash
+curl -s -X POST -H 'Content-Type: application/json' \
+  --data '{"dry_run":true,"host":"stub"}' \
+  http://127.0.0.1:7788/api/execution-run
+```
 
 For a repeatable local development deployment, use the wrappers:
 
@@ -343,9 +531,10 @@ Materialize the selected stack:
 bash plugins/mutagen/scripts/project.sh scaffold
 ```
 
-`scaffold` currently writes runnable starters for `vite-express-sqlite` and
-`rust-bevy`. It refuses to overwrite existing files unless `--force` is
-provided.
+`scaffold` writes runnable starters for every catalog stack:
+`nextjs-postgres`, `vite-express-sqlite`, `fastapi-react`, `aspnet-blazor`,
+`cloudflare-worker`, and `rust-bevy`. It refuses to overwrite existing files
+unless `--force` is provided.
 
 Verify the generated project:
 

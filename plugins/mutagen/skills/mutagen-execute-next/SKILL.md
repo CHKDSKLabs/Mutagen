@@ -15,10 +15,11 @@ This skill is a host adapter instruction, not the pipeline implementation.
 ## Run
 
 ```bash
-bash "$MUTAGEN_ROOT/scripts/run_execute_next.sh" --host codex
+bash "$MUTAGEN_ROOT/scripts/harness_runtime.sh" run-execute-next --host codex
 ```
 
-Treat the JSON payload as authoritative.
+Treat the harness JSON payload as authoritative. The legacy
+`scripts/run_execute_next.sh` entrypoint delegates to the same command.
 
 ## Stop Conditions
 
@@ -42,7 +43,7 @@ tooling failure, or user interrupt.
 Use these only to inspect a boundary after a failure:
 
 ```bash
-bash "$MUTAGEN_ROOT/scripts/run_slice_once.sh" --host codex
+bash "$MUTAGEN_ROOT/scripts/harness_runtime.sh" run-slice-once --host codex
 bash "$MUTAGEN_ROOT/scripts/prepare_cohort.sh" --host codex
 bash "$MUTAGEN_ROOT/scripts/dispatch_cohort_members.sh" --help
 bash "$MUTAGEN_ROOT/scripts/apply_cohort_dispatch.sh" --help

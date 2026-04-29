@@ -144,12 +144,12 @@ if [[ -z "$WORKSPACE_ROOT" ]]; then
   exit 1
 fi
 
+mkdir -p "$WORKSPACE_ROOT"
 WORKSPACE_ROOT="$(cd "$WORKSPACE_ROOT" && pwd)"
 PROJECT_FILE="$WORKSPACE_ROOT/.mutagen/project.json"
 if [[ ! -f "$PROJECT_FILE" ]]; then
   printf 'workspace is missing %s\n' "$(display_path "$PROJECT_FILE")" >&2
-  printf 'run bash plugins/mutagen/scripts/project.sh init first. The harness is good, not psychic.\n' >&2
-  exit 1
+  printf 'dashboard will open in project setup mode.\n' >&2
 fi
 
 PACKAGED_BINARY="$PLUGIN_ROOT/bin/mutagen-harness"

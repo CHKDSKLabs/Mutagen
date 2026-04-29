@@ -17,10 +17,12 @@ This command is a host entrypoint. Do not reimplement the pipeline in markdown.
 ## Run
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/run_execute_next.sh" --host claude
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/harness_runtime.sh" run-execute-next --host claude
 ```
 
-Treat the script's JSON payload as authoritative.
+Treat the harness JSON payload as authoritative. The legacy
+`scripts/run_execute_next.sh` entrypoint is a thin compatibility shim for the
+same command.
 
 ## Stop Conditions
 
@@ -45,7 +47,7 @@ The only valid end states are the stop conditions above or a user interrupt.
 Use the one-slice runner only when investigating a failed run:
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/run_slice_once.sh" --host claude
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/harness_runtime.sh" run-slice-once --host claude
 ```
 
 Use focused wrappers when inspecting a specific harness boundary:
