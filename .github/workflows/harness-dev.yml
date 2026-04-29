@@ -22,6 +22,8 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -31,8 +33,13 @@ jobs:
       - name: Check formatting
         run: cargo fmt --manifest-path harness/Cargo.toml --check
 
+      - name: Lint with clippy (deny on any warning)
+        run: cargo clippy --manifest-path harness/Cargo.toml --all-targets -- -D warnings
+
       - name: Check plugin scripts
-        run: bash -n plugins/mutagen/scripts/*.sh
+        run: |
+          bash -n plugins/mutagen/scripts/*.sh
+          bash -n plugins/mutagen/bin/*.sh
 
       - name: Run harness tests
         run: cargo test --manifest-path harness/Cargo.toml

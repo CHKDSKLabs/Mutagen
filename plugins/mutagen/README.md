@@ -36,13 +36,17 @@ The harness binary is **not committed to the repo** (it would be platform-specif
 3. `cargo run --manifest-path harness/Cargo.toml` as a source-checkout fallback (requires `cargo`).
 4. `mutagen-harness` on `PATH`.
 
-For most users the source-checkout fallback (#3) is enough — install Rust and the harness builds on first invocation. To package a binary at the canonical plugin path so the wrappers don't shell out to `cargo` every time:
+For most users:
 
-```bash
-bash plugins/mutagen/scripts/build_harness_binary.sh --release
-```
+- **Have Rust installed?** The source-checkout fallback (#3 above) is enough. The first invocation will compile the harness; subsequent runs use the cached build.
+- **Don't want to install Rust?** Download a pre-built binary from the [GitHub Releases page](https://github.com/ObtuseAglet/agentic_design_workflow/releases) for your platform. Each tagged release ships archives for `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-apple-darwin`, `aarch64-apple-darwin`, and `x86_64-pc-windows-msvc`, each with a `.sha256` checksum. Extract the archive, then either drop `mutagen-harness` (or `.exe`) at `plugins/mutagen/bin/` or point `MUTAGEN_HARNESS_BIN` at it.
+- **Building from source for the canonical plugin-local path:** run
 
-That writes `plugins/mutagen/bin/mutagen-harness` (or `.exe` on Windows). The path is in `.gitignore`; this is a per-machine artifact, not something you commit.
+  ```bash
+  bash plugins/mutagen/scripts/build_harness_binary.sh --release
+  ```
+
+  That writes `plugins/mutagen/bin/mutagen-harness` (or `.exe` on Windows). The path is in `.gitignore`; this is a per-machine artifact, not something you commit.
 
 With a packaged binary, end users do not need `cargo` or `rustc`. Without a packaged binary, development checkouts still need Rust installed. Without `jq` the scope guard fails open with a warning; set `STRICT_GUARD=1` to fail closed instead.
 
