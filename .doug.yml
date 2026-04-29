@@ -1,0 +1,10 @@
+enabled: true
+requiredChecks: []
+allowedUpdateTypes:
+  - patch
+  - minor
+deploymentEnvironments: []
+reviewers: []
+escalationLabels:
+  - doug/manual-intervention
+riskyPackages: []
