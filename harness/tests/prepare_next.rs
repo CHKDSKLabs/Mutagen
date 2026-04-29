@@ -17,59 +17,47 @@ fn prepare_next_claims_ready_slice_and_writes_state_and_evidence() {
         prepare_next(workspace.prepare_next_options(false)).expect("prepare-next should succeed");
 
     let evidence_bundle_path = match result {
-        PrepareNextResult::Ready {
-            slice_id,
-            author_agent,
-            layer,
-            bounded_context,
-            objective,
-            review_required,
-            attempts,
-            context_to_update,
-            write_set,
-            adjacent_scope_allowed,
-            depends_on,
-            claimed,
-            degraded_capabilities,
-            host_profile,
-            evidence_bundle_path,
-            ..
-        } => {
-            assert_eq!(slice_id, "L1-orders-001");
-            assert_eq!(author_agent, "Bebop");
-            assert_eq!(layer, 1);
-            assert_eq!(bounded_context, "orders");
+        PrepareNextResult::Ready { prepared } => {
+            assert_eq!(prepared.slice_id, "L1-orders-001");
+            assert_eq!(prepared.author_agent, "Bebop");
+            assert_eq!(prepared.layer, 1);
+            assert_eq!(prepared.bounded_context, "orders");
             assert_eq!(
-                objective,
+                prepared.objective,
                 "Create the initial order aggregate and its tests."
             );
-            assert!(review_required);
-            assert_eq!(attempts, 0);
-            assert_eq!(context_to_update, "project_state.md");
+            assert!(prepared.review_required);
+            assert_eq!(prepared.attempts, 0);
+            assert_eq!(prepared.context_to_update, "project_state.md");
             assert_eq!(
-                write_set,
+                prepared.write_set,
                 vec!["src/orders/**".to_string(), "tests/orders/**".to_string()]
             );
-            assert!(adjacent_scope_allowed.is_empty());
-            assert!(depends_on.is_empty());
-            assert!(claimed);
-            assert!(degraded_capabilities.contains(&"pre_write_scope_enforcement".to_string()));
+            assert!(prepared.adjacent_scope_allowed.is_empty());
+            assert!(prepared.depends_on.is_empty());
+            assert!(prepared.claimed);
+            assert!(
+                prepared
+                    .degraded_capabilities
+                    .contains(&"pre_write_scope_enforcement".to_string())
+            );
             assert_eq!(
-                host_profile.scope_enforcement,
+                prepared.host_profile.scope_enforcement,
                 ScopeEnforcementMode::Advisory
             );
             assert_eq!(
-                host_profile.parallel_dispatch,
+                prepared.host_profile.parallel_dispatch,
                 ParallelDispatchMode::SerialOnly
             );
-            assert_eq!(host_profile.requested_max_parallel_slices, 3);
-            assert_eq!(host_profile.effective_max_parallel_slices, 1);
+            assert_eq!(prepared.host_profile.requested_max_parallel_slices, 3);
+            assert_eq!(prepared.host_profile.effective_max_parallel_slices, 1);
             assert!(
-                host_profile
+                prepared
+                    .host_profile
                     .degraded_features
                     .contains(&"parallel_dispatch".to_string())
             );
-            evidence_bundle_path
+            prepared.evidence_bundle_path
         }
         other => panic!("expected ready result, got {other:?}"),
     };

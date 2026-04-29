@@ -1264,11 +1264,9 @@ fn project_execute_feature_prepares_next_feature_slice() {
         Some(flow.enqueue_feature.enqueued_slice_ids[0].as_str())
     );
     match result.prepare.expect("prepare result should be present") {
-        PrepareSelectedSliceResult::Ready {
-            slice_id, claimed, ..
-        } => {
-            assert_eq!(slice_id, flow.enqueue_feature.enqueued_slice_ids[0]);
-            assert!(claimed);
+        PrepareSelectedSliceResult::Ready { prepared } => {
+            assert_eq!(prepared.slice_id, flow.enqueue_feature.enqueued_slice_ids[0]);
+            assert!(prepared.claimed);
         }
         other => panic!("expected ready prepare result, got {other:?}"),
     }
@@ -1316,8 +1314,8 @@ fn project_execute_feature_dry_run_does_not_claim_slice() {
 
     assert!(result.ok);
     match result.prepare.expect("prepare result should be present") {
-        PrepareSelectedSliceResult::Ready { claimed, .. } => {
-            assert!(!claimed);
+        PrepareSelectedSliceResult::Ready { prepared } => {
+            assert!(!prepared.claimed);
         }
         other => panic!("expected ready prepare result, got {other:?}"),
     }

@@ -29,10 +29,11 @@ export MUTAGEN_ROOT="/absolute/path/to/agentic_design_workflow/plugins/mutagen"
 
 Codex discovers skills under `plugins/mutagen/skills/<name>/SKILL.md`
 automatically. Invoke with `$mutagen-slice`, `$mutagen-execute-next`,
-`$mutagen-status`, `$mutagen-amend-scope`, `$mutagen-elicit`, or
-`$mutagen-setup-pushover`. All six skills are configured with
-`allow_implicit_invocation: false` — mutagen is a workflow, not a helpful
-tool, so explicit invocation is the only trigger.
+`$mutagen-status`, `$mutagen-amend-scope`, `$mutagen-elicit`,
+`$mutagen-consolidate-advisories`, `$mutagen-setup-pushover`,
+`$mutagen-pause`, or `$mutagen-resume`. All nine skills are configured
+with `allow_implicit_invocation: false` — mutagen is a workflow, not a
+helpful tool, so explicit invocation is the only trigger.
 
 **Known degradation on Codex:** the `codex_hooks` feature is still under
 development and disabled on Windows, so the plugin does not ship
@@ -44,9 +45,13 @@ globs; nothing blocks it). Reviewers are the backstop.
 
 | Plugin | Description |
 |--------|-------------|
-| [`mutagen`](plugins/mutagen/) | End-to-end agentic design workflow — thirteen personas, six commands/skills (elicit, slice, execute-next, amend-scope, status, setup-pushover), `PreToolUse` scope-enforcement hook *(Claude only)*, optional Pushover halt notifications, five-document upstream design bundle (PRD / ADR / DDD / ISC / DSD) with templates and authoring guides. |
+| [`mutagen`](plugins/mutagen/) | End-to-end agentic design workflow — thirteen personas, nine Claude commands and the matching nine Codex skills (elicit, slice, execute-next, amend-scope, status, consolidate-advisories, setup-pushover, pause, resume), `PreToolUse` scope-enforcement hook *(Claude only)*, optional Pushover halt notifications, five-document upstream design bundle (PRD / ADR / DDD / ISC / DSD) with templates and authoring guides. |
 
 See [`plugins/mutagen/README.md`](plugins/mutagen/README.md) for the full story.
+
+For a populated reference workspace — five upstream design documents,
+a slice queue, and a Tiger Claw review report in their canonical
+filesystem layout — see [`examples/orders-demo/`](examples/orders-demo/).
 
 ## Repository layout
 
@@ -62,15 +67,18 @@ See [`plugins/mutagen/README.md`](plugins/mutagen/README.md) for the full story.
 │       ├── .claude-plugin/plugin.json  # Claude Code manifest
 │       ├── .codex-plugin/plugin.json   # Codex manifest
 │       ├── agents/                     # 13 Claude subagents + persona source-of-truth for Codex
-│       ├── commands/                   # 6 Claude slash commands
-│       ├── skills/                     # 6 Codex skills ($mutagen-*)
+│       ├── commands/                   # 9 Claude slash commands
+│       ├── skills/                     # 9 Codex skills ($mutagen-*)
 │       │   └── <skill>/SKILL.md + agents/openai.yaml
-│       ├── bin/                        # agent.sh / agent.ps1 / agents-parallel.sh - host-aware persona launchers
+│       ├── bin/                        # agent.sh / agent.ps1 / agents-parallel.sh / claude-harness.sh
 │       ├── hooks/                      # Claude Code PreToolUse + PostToolUse
-│       ├── scripts/                    # harness shims, guard.sh, counter.sh, heartbeat.sh, render_queue.sh, notify.sh
+│       ├── scripts/                    # harness wrappers, dispatch glue, render/render/notify helpers
 │       ├── templates/                  # PRD / ADR / DDD / ISC / DSD templates
 │       ├── guides/                     # authoring & review guides
 │       └── README.md
+├── harness/                            # Rust harness crate (mutagen-harness)
+├── examples/
+│   └── orders-demo/                    # populated reference workspace (read-only)
 └── README.md                           # this file
 ```
 

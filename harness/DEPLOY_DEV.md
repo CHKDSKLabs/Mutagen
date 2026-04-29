@@ -3,6 +3,13 @@
 This is the boring, useful path for running the harness as a development
 console instead of a loose pile of commands.
 
+The embedded HTTP dashboard (`project dashboard-serve`, the
+`scripts/dashboard_dev.sh` and `scripts/dev_console.sh` wrappers,
+`/mutagen:dashboard`) has been retired. Operator control runs through the
+CLI surface: `/mutagen:execute-next`, `/mutagen:status`, `/mutagen:pause`,
+`/mutagen:resume`, and `/mutagen:amend-scope`. The JSON snapshot
+`project dashboard` is still available for any future UI layer.
+
 ## Target Shape
 
 The first deployment target is intentionally small:
@@ -10,19 +17,17 @@ The first deployment target is intentionally small:
 - one harness process
 - one workspace per process
 - local machine first
-- dashboard bound to localhost by default
 - plugin scripts stay the main entrypoint
 
 That keeps the runtime honest while we learn where the sharp edges actually are.
 
 ## What Gets Installed
 
-For local development, we ship four things together:
+For local development, we ship three things together:
 
 1. the Rust harness binary
 2. the plugin wrapper scripts
 3. the workspace under active development
-4. the local dashboard UI served by `project dashboard-serve`
 
 ## Runtime Contract
 
@@ -34,53 +39,6 @@ The development deployment expects:
 - `bash`, `git`, and `jq` on `PATH`
 - Rust installed when the packaged binary is absent and the wrapper needs to build one
 
-The dashboard defaults live in [config/dev.toml](/mnt/c/Users/spork/dev/agentic_design_workflow/harness/config/dev.toml).
-
-## Launch Flow
-
-The blessed local entrypoint is:
-
-```bash
-bash plugins/mutagen/scripts/dev_console.sh --workspace-root /path/to/workspace
-```
-
-That wrapper does the small amount of housekeeping we actually want:
-
-- runs `doctor_dev.sh` first
-- resolves the workspace root
-- opens project setup mode when `.mutagen/project.json` does not exist yet
-- builds a packaged harness binary when one is missing
-- reads default bind/port/host values from `harness/config/dev.toml`
-- launches `project dashboard-serve`
-
-If you want the bare launcher without the preflight pass:
-
-```bash
-bash plugins/mutagen/scripts/dashboard_dev.sh --workspace-root /path/to/workspace
-```
-
-The companion environment check is:
-
-```bash
-bash plugins/mutagen/scripts/doctor_dev.sh --workspace-root /path/to/workspace
-```
-
-## Config Precedence
-
-The dev launcher resolves configuration in this order:
-
-1. CLI flags
-2. environment variables
-3. `harness/config/dev.toml`
-4. built-in defaults
-
-Supported environment variables:
-
-- `MUTAGEN_WORKSPACE_ROOT`
-- `MUTAGEN_DASHBOARD_BIND`
-- `MUTAGEN_DASHBOARD_PORT`
-- `MUTAGEN_HOST_KIND`
-
 ## Common Commands
 
 Build a packaged binary:
@@ -89,67 +47,41 @@ Build a packaged binary:
 bash plugins/mutagen/scripts/build_harness_binary.sh --debug
 ```
 
-Launch the dashboard:
-
-```bash
-bash plugins/mutagen/scripts/dev_console.sh --workspace-root /path/to/workspace
-bash plugins/mutagen/scripts/dashboard_dev.sh --workspace-root /path/to/workspace
-```
-
-Run the dev doctor:
+Run the dev doctor (checks workspace + tooling):
 
 ```bash
 bash plugins/mutagen/scripts/doctor_dev.sh --workspace-root /path/to/workspace
 ```
 
-Launch manually without the wrapper:
+Load a project dashboard JSON snapshot:
 
 ```bash
-bash plugins/mutagen/scripts/project.sh dashboard-serve \
-  --workspace-root /path/to/workspace \
-  --bind 127.0.0.1 \
-  --port 7799 \
-  --host stub
+bash plugins/mutagen/scripts/project.sh dashboard --workspace-root /path/to/workspace
 ```
 
-## Local Smoke Checklist
+Run the workflow loop:
 
-Before calling a local deployment healthy, verify:
+```bash
+bash plugins/mutagen/scripts/run_execute_next.sh --workspace-root /path/to/workspace --host claude
+```
 
-1. the plugin wrapper launches without path errors
-2. `/healthz` returns `ok`
-3. `/api/dashboard` returns a project snapshot
-4. `/api/activity-feed` returns a valid payload even when sparse
-5. `Run Doctor` works from the UI
-6. `Repair Scaffold` works from the UI when a managed file is missing
-7. preview/build controls report truthful failures when tooling is missing
+Pause / resume the loop at a stage boundary:
+
+```bash
+bash plugins/mutagen/scripts/pause.sh on  --reason "investigating L4-World-004"
+bash plugins/mutagen/scripts/pause.sh off
+```
 
 ## Troubleshooting
 
-### Port already in use
-
-Launch on another port:
-
-```bash
-bash plugins/mutagen/scripts/dashboard_dev.sh \
-  --workspace-root /path/to/workspace \
-  --port 7801
-```
-
 ### Packaged binary missing
 
-The launcher will try to build one automatically. If Rust is missing, install
-it or point `MUTAGEN_HARNESS_BIN` at an already-built binary.
+`build_harness_binary.sh` will build one. If Rust is missing, install it or
+point `MUTAGEN_HARNESS_BIN` at an already-built binary.
 
 ### Workspace not initialized
 
-Open the dashboard and create the project from the setup panel:
-
-```bash
-bash plugins/mutagen/scripts/dev_console.sh --workspace-root /path/to/workspace
-```
-
-You can still create the project capsule from the shell:
+Create the project capsule first:
 
 ```bash
 bash plugins/mutagen/scripts/project.sh init \
@@ -161,32 +93,16 @@ bash plugins/mutagen/scripts/project.sh init \
 
 ### Doctor says tools are missing
 
-That means the dashboard is being truthful, which is rude but useful. Install
-the missing stack toolchain or use a stack whose requirements already exist on
-the machine.
-
-## Shared Dev Later
-
-Once the local loop feels boring in the best possible way, the next step is a
-single shared internal dev instance:
-
-- one Linux VM or dev box
-- one workspace mounted on disk
-- one dashboard process
-- reverse proxy in front
-- VPN-only or basic auth access
-
-Keep it single-workspace and single-operator-biased at first. Multi-tenant
-mutation is where software starts writing checks the team did not mean to cash.
+That means the doctor is being truthful, which is rude but useful. Install the
+missing stack toolchain or pick a stack whose requirements already exist on the
+machine.
 
 ## CI Skeleton
 
-The repo now includes a starter workflow at
-[.github/workflows/harness-dev.yml](/mnt/c/Users/spork/dev/agentic_design_workflow/.github/workflows/harness-dev.yml).
-
-It does four useful things:
+The repo includes a starter workflow at
+[.github/workflows/harness-dev.yml](../.github/workflows/harness-dev.yml).
+It does three useful things:
 
 1. checks Rust formatting
 2. syntax-checks the plugin shell wrappers
 3. runs the full harness test suite
-4. creates a scratch workspace, launches the dashboard, and hits the health and JSON endpoints

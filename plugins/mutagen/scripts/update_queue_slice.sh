@@ -45,6 +45,14 @@ Usage:
     [--clear-completed-at]
     [--escalation-reason TEXT]
     [--clear-escalation-reason]
+    [--human-check-resolved-at ISO-8601]
+    [--resolve-human-check]
+    [--clear-human-check-resolved-at]
+
+Status values: pending, in_progress, blocked_retry, completed, escalated,
+refused. Clap accepts the kebab-case form (e.g. `in-progress`) too because it
+is a derived ValueEnum, but the on-disk queue stores snake_case. Prefer the
+snake_case form to keep CLI input and queue contents consistent.
 EOF
   exit 1
 }
@@ -67,12 +75,12 @@ while [[ $# -gt 0 ]]; do
       LEGACY_PATH="$2"
       shift 2
       ;;
-    --slice-id|--status|--attempts|--micro-corrections-used|--karai-structural|--bishop|--tiger-claw|--micro-correction|--completed-at|--escalation-reason)
+    --slice-id|--status|--attempts|--micro-corrections-used|--karai-structural|--bishop|--tiger-claw|--micro-correction|--completed-at|--escalation-reason|--human-check-resolved-at)
       [[ $# -ge 2 ]] || usage
       HARNESS_ARGS+=("$1" "$2")
       shift 2
       ;;
-    --clear-completed-at|--clear-escalation-reason)
+    --clear-completed-at|--clear-escalation-reason|--clear-human-check-resolved-at|--resolve-human-check)
       HARNESS_ARGS+=("$1")
       shift
       ;;

@@ -289,11 +289,11 @@ fn extract_section_from_heading(lines: &[&str], heading_index: usize) -> Option<
     let mut end = lines.len();
 
     for (index, line) in lines.iter().enumerate().skip(heading_index + 1) {
-        if let Some(next_level) = heading_level(line) {
-            if next_level <= level {
-                end = index;
-                break;
-            }
+        if let Some(next_level) = heading_level(line)
+            && next_level <= level
+        {
+            end = index;
+            break;
         }
     }
 

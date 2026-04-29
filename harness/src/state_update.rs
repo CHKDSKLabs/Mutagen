@@ -147,12 +147,12 @@ fn extract_state_update_section(author_output: &str) -> Result<String> {
     let mut level = 0usize;
 
     for (index, line) in lines.iter().enumerate() {
-        if let Some((candidate_level, title)) = heading(line) {
-            if title.to_lowercase().starts_with("state update") {
-                start = Some(index + 1);
-                level = candidate_level;
-                break;
-            }
+        if let Some((candidate_level, title)) = heading(line)
+            && title.to_lowercase().starts_with("state update")
+        {
+            start = Some(index + 1);
+            level = candidate_level;
+            break;
         }
     }
 
@@ -168,12 +168,12 @@ fn extract_state_update_section(author_output: &str) -> Result<String> {
             continue;
         }
 
-        if !in_fence {
-            if let Some((candidate_level, _)) = heading(line) {
-                if candidate_level <= level && body.iter().any(|entry| !entry.trim().is_empty()) {
-                    break;
-                }
-            }
+        if !in_fence
+            && let Some((candidate_level, _)) = heading(line)
+            && candidate_level <= level
+            && body.iter().any(|entry| !entry.trim().is_empty())
+        {
+            break;
         }
 
         body.push(*line);

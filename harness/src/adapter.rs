@@ -3,18 +3,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::WorkflowConfig;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, ValueEnum)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, ValueEnum)]
 #[serde(rename_all = "snake_case")]
 pub enum HostKind {
+    #[default]
     Stub,
     Codex,
     Claude,
-}
-
-impl Default for HostKind {
-    fn default() -> Self {
-        Self::Stub
-    }
 }
 
 pub trait HostAdapter {

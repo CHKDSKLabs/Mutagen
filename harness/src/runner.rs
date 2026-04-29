@@ -325,6 +325,8 @@ fn run_slice_once_inner(
                     clear_completed_at: false,
                     escalation_reason: Some(structural_reason),
                     clear_escalation_reason: false,
+                    human_check_resolved_at: None,
+                    clear_human_check_resolved_at: false,
                 }),
             )?;
             render_queue_views(&paths.queue_path, &paths.slicemap_path, &paths.legacy_path)?;
@@ -368,6 +370,8 @@ fn run_slice_once_inner(
                 clear_completed_at: false,
                 escalation_reason: None,
                 clear_escalation_reason: false,
+                human_check_resolved_at: None,
+                clear_human_check_resolved_at: false,
             }),
         )?;
         render_queue_views(&paths.queue_path, &paths.slicemap_path, &paths.legacy_path)?;
@@ -392,6 +396,8 @@ fn run_slice_once_inner(
                     clear_completed_at: false,
                     escalation_reason: None,
                     clear_escalation_reason: false,
+                    human_check_resolved_at: None,
+                    clear_human_check_resolved_at: false,
                 }),
             )?;
             render_queue_views(&paths.queue_path, &paths.slicemap_path, &paths.legacy_path)?;

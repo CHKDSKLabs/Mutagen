@@ -71,6 +71,7 @@ pub struct Slice {
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, ValueEnum)]
 #[serde(rename_all = "snake_case")]
+#[clap(rename_all = "snake_case")]
 pub enum SliceStatus {
     #[default]
     Pending,

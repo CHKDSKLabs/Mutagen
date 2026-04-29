@@ -1,6 +1,6 @@
 # mutagen
 
-The `mutagen` plugin packages an end-to-end agentic design workflow for Claude Code: thirteen subagents, a PreToolUse scope-enforcement hook, six slash commands, plus templates and authoring guides for the five upstream design documents that feed the pipeline.
+The `mutagen` plugin packages an end-to-end agentic design workflow for Claude Code: thirteen subagents, a PreToolUse scope-enforcement hook, nine slash commands, plus templates and authoring guides for the five upstream design documents that feed the pipeline.
 
 The flow is **User ↔ April → Shredder → Karai → {Bebop | Baxter | Chaplin | Metalhead | Splinter | Tatsu | Krang} → Karai (structural) → Bishop (review) → Tiger Claw (adversarial) → Karai → next slice**, with **Traag** wrapping every filesystem mutation any agent attempts.
 
@@ -27,18 +27,26 @@ claude --plugin-dir /path/to/agentic_design_workflow/plugins/mutagen
 
 Requires `bash`, `jq`, and `git` on PATH for the shell helpers. The slice-authoring flow, host-profile resolution, queue mutation helpers, active-slice stage rotation, Stage 2 structural gate, and final slice closure delegate to the Rust harness.
 
-The plugin now resolves the harness in this order:
+### Getting the harness binary
+
+The harness binary is **not committed to the repo** (it would be platform-specific and would bloat clones). The plugin resolves the harness in this order:
 
 1. `MUTAGEN_HARNESS_BIN`, when set to an executable.
-2. `plugins/mutagen/bin/mutagen-harness` or `mutagen-harness.exe`, when packaged with the plugin.
-3. `cargo run --manifest-path harness/Cargo.toml` as a source-checkout fallback.
+2. `plugins/mutagen/bin/mutagen-harness` or `mutagen-harness.exe`, when packaged locally.
+3. `cargo run --manifest-path harness/Cargo.toml` as a source-checkout fallback (requires `cargo`).
 4. `mutagen-harness` on `PATH`.
 
-For local packaging, build and copy the harness binary into the plugin:
+For most users:
 
-```bash
-bash plugins/mutagen/scripts/build_harness_binary.sh --release
-```
+- **Have Rust installed?** The source-checkout fallback (#3 above) is enough. The first invocation will compile the harness; subsequent runs use the cached build.
+- **Don't want to install Rust?** Download a pre-built binary from the [GitHub Releases page](https://github.com/ObtuseAglet/agentic_design_workflow/releases) for your platform. Each tagged release ships archives for `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-apple-darwin`, `aarch64-apple-darwin`, and `x86_64-pc-windows-msvc`, each with a `.sha256` checksum. Extract the archive, then either drop `mutagen-harness` (or `.exe`) at `plugins/mutagen/bin/` or point `MUTAGEN_HARNESS_BIN` at it.
+- **Building from source for the canonical plugin-local path:** run
+
+  ```bash
+  bash plugins/mutagen/scripts/build_harness_binary.sh --release
+  ```
+
+  That writes `plugins/mutagen/bin/mutagen-harness` (or `.exe` on Windows). The path is in `.gitignore`; this is a per-machine artifact, not something you commit.
 
 With a packaged binary, end users do not need `cargo` or `rustc`. Without a packaged binary, development checkouts still need Rust installed. Without `jq` the scope guard fails open with a warning; set `STRICT_GUARD=1` to fail closed instead.
 
@@ -95,21 +103,6 @@ Repair missing scaffold files:
 bash plugins/mutagen/scripts/project.sh repair --scaffold
 ```
 
-Capture project intent in natural prose:
-
-```bash
-bash plugins/mutagen/scripts/project.sh intake \
-  --prompt "Build a crew scheduling app for dispatchers. It should manage shifts, absences, and overtime."
-```
-
-Write that request into the design brief and queue work in one pass:
-
-```bash
-bash plugins/mutagen/scripts/project.sh intake \
-  --prompt "Build a crew scheduling app for dispatchers. It should manage shifts, absences, and overtime." \
-  --queue-feature
-```
-
 Queue a feature intent:
 
 ```bash
@@ -164,41 +157,22 @@ Inspect feature progress:
 bash plugins/mutagen/scripts/project.sh feature-progress --feature-id feature-...
 ```
 
-Load the dashboard snapshot:
+Load the dashboard snapshot (read-only JSON; the embedded HTTP dashboard
+has been retired in favour of the CLI surface):
 
 ```bash
 bash plugins/mutagen/scripts/project.sh dashboard
 ```
 
-Serve the local dashboard:
-
-```bash
-bash plugins/mutagen/scripts/project.sh dashboard-serve --port 7788
-```
-
-The dashboard now includes preview controls plus setup/test/build/verify actions,
-so it can act like a small project console instead of just a feature queue view.
-
-It also has a natural-language project intake panel, so users can describe what
-they want in plain English and let the harness save that intent to the design
-brief or translate it into queued work.
-
-It also exposes a dashboard host selector for `codex` vs `claude`, and uses
-that persisted per-workspace choice for dashboard-triggered execution actions.
-
-For local development deployment, prefer the wrappers:
+For workspace-doctor checks, run:
 
 ```bash
 bash plugins/mutagen/scripts/doctor_dev.sh --workspace-root /path/to/workspace
-bash plugins/mutagen/scripts/dashboard_dev.sh --workspace-root /path/to/workspace
-bash plugins/mutagen/scripts/dev_console.sh --workspace-root /path/to/workspace
 ```
 
-That path checks the workspace, builds a packaged harness binary when needed,
-and launches the dashboard with the defaults from `harness/config/dev.toml`.
-
-Inside the plugin command surface, use `/mutagen:dashboard` as the one obvious
-move for launching the local console.
+The operator surface for run control is the CLI: `/mutagen:execute-next`,
+`/mutagen:status`, `/mutagen:pause`, `/mutagen:resume`, and
+`/mutagen:amend-scope`.
 
 Run a blueprint command through the capsule:
 
@@ -312,45 +286,47 @@ Shredder's slicing order follows a 6-layer dependency hierarchy (Foundation → 
 
 Traag closes the scope-security gap that raw harness permissions cannot express: instead of "allow all writes" or "prompt on every write," Traag evaluates each `Write` / `Edit` / delete against a per-slice scope manifest plus a global denylist (secrets, `.git`, lock files, infra config outside Krang's slices, upstream design artifacts). Deny is the default on any ambiguity; a DENY blocks the mutation and fires as a Red inspection outcome in Karai, halting the slice and surfacing the Violation Report to the human. There is no "just this once" override — amendments happen upstream by amending the manifest or re-slicing via Shredder.
 
-## Session ritual — five slash commands
+## Session ritual — host-aware command surface
 
-Namespaced under `mutagen:`:
+The command surface is host-aware:
+
+- **Claude Code** — slash commands, namespaced `mutagen:`. Sources live in
+  `plugins/mutagen/commands/<name>.md`. Invoke as `/mutagen:<name>`.
+- **Codex** — explicit-only skills, namespaced `mutagen-`. Sources live in
+  `plugins/mutagen/skills/mutagen-<name>/SKILL.md`. Invoke as
+  `$mutagen-<name>`.
+
+The two surfaces drive the same shell scripts under `plugins/mutagen/scripts/`
+and the same Rust harness, so the workflow is identical — only the entrypoint
+differs. The table below uses Claude form first; the matching Codex name is
+parenthesised.
 
 | Command | Purpose |
 |---------|---------|
-| `/mutagen:elicit` | Run April to interview you and author / iterate the five upstream documents. Persists her Readiness Brief to `.mutagen/state/readiness-brief.{md,json}`. |
-| `/mutagen:slice` | Run Shredder on the approved bundle to produce a dependency-ordered slice queue. Emits `slices/queue.json` (canonical) and `slices/slicemap.md` (human-readable), refreshes legacy `slices/queue.md` as a compatibility shadow, then validates the queue through the harness before handing it to Karai. Persists Shredder's Validation Report to `.mutagen/state/validation-report.{md,json}` and the harness queue-validator report to `.mutagen/state/queue-validation.json`, including queue-contract freshness metadata so normal runtime bookkeeping does not falsely stale the queue. |
-| `/mutagen:execute-next` | Run Karai on the next pending slice — refuses dispatch when the queue-validation report is missing, stale, orphaned, or failed, then drives the native harness `run-execute-next` loop. The compatibility script `scripts/run_execute_next.sh` now only resolves the harness binary and delegates. The harness owns sibling selection, targeted slice materialization, stage dispatch, structural gating, verdict recording, retry branching, canonical closeout, cohort worktrees, deterministic import, state-update application, and notification planning. Successful cohort members are imported back into the main tree in queue order, with state updates applied from author output. |
-| `/mutagen:amend-scope` | Evaluate a mid-slice amendment request through the harness `amend-scope` runtime. The runtime enforces stage fidelity, active-agent domain, and global deny rules, rewrites `.mutagen/state/active-slice.json` on ALLOW, appends `.mutagen/state/amendments.jsonl` on both ALLOW and DENY, and returns the canonical rationale / next-step payload. |
-| `/mutagen:status` | Read-only report on upstream-document status, April's Readiness Brief, Shredder's Validation Report, harness queue-validation state, queue progress, active slice, latest scope-violation artifact, heartbeat telemetry, gate verdicts, and open escalations. |
-| `/mutagen:setup-pushover` | First-run wizard for Pushover notifications — detects existing config, collects user key + app token, lets you pick env-var or `workflow.json` storage, optionally configures `quiet_events`, and sends a test push. |
+| `/mutagen:elicit`        (`$mutagen-elicit`)        | Run April to interview you and author / iterate the five upstream documents. Persists her Readiness Brief to `.mutagen/state/readiness-brief.{md,json}`. |
+| `/mutagen:slice`         (`$mutagen-slice`)         | Run Shredder on the approved bundle to produce a dependency-ordered slice queue. Emits `slices/queue.json` (canonical) and `slices/slicemap.md` (human-readable), refreshes legacy `slices/queue.md` as a compatibility shadow, then validates the queue through the harness before handing it to Karai. Persists Shredder's Validation Report to `.mutagen/state/validation-report.{md,json}` and the harness queue-validator report to `.mutagen/state/queue-validation.json`, including queue-contract freshness metadata so normal runtime bookkeeping does not falsely stale the queue. |
+| `/mutagen:execute-next`  (`$mutagen-execute-next`)  | Run Karai on the next pending slice. Wraps `scripts/run_execute_next.sh`. Stops at queue clear, stalled deps, escalation, queue-validation failure, or — when the operator drops `.mutagen/state/pause.json` — `status: "paused"`. The harness owns sibling selection, targeted slice materialization, stage dispatch prep, structural gating, verdict recording, retry branching, canonical closeout, state-update application, and notification planning. |
+| `/mutagen:resume`        (`$mutagen-resume`)        | Resume after a manual repair: optionally flip the slice back to `in_progress`, re-run structural-check on the repaired author output, and dispatch review. One-shot — does not loop. |
+| `/mutagen:pause`         (`$mutagen-pause`)         | Stage-boundary pause / resume / status for the execute-next loop. `pause on --reason TEXT` makes the next iteration stop before claiming a slice; `pause off` clears the sentinel. Does not pre-empt work already in flight. |
+| `/mutagen:amend-scope`   (`$mutagen-amend-scope`)   | Evaluate a mid-slice amendment request through the harness `amend-scope` runtime. The runtime enforces stage fidelity, active-agent domain, and global deny rules, rewrites `.mutagen/state/active-slice.json` on ALLOW, appends `.mutagen/state/amendments.jsonl` on both ALLOW and DENY, and returns the canonical rationale / next-step payload. |
+| `/mutagen:status`        (`$mutagen-status`)        | Read-only report on upstream-document status, April's Readiness Brief, Shredder's Validation Report, harness queue-validation state, queue progress, active slice, latest scope-violation artifact, heartbeat telemetry, gate verdicts, and open escalations. |
+| `/mutagen:consolidate-advisories` (`$mutagen-consolidate-advisories`) | Promote Bishop's 🟡 Advisory backlog (`.mutagen/state/advisory-backlog.jsonl`) into one or more cleanup slices via Shredder. Without this, advisories accumulate in `reviews/` and never get addressed. |
+| `/mutagen:setup-pushover` (`$mutagen-setup-pushover`) | First-run wizard for Pushover notifications. |
 
 Stage dispatch is host-aware. `--host codex` runs personas through `codex exec`
-using `CODEX_BIN` when set; `--host claude` runs them through `claude --print`
-using `CLAUDE_BIN` when set. Set `MUTAGEN_AGENT_LAUNCHER` to replace the
-launcher for either host or for a future host adapter.
+using `CODEX_BIN` when set; `--host claude` runs them through the packaged
+non-interactive wrapper `bin/claude-harness.sh` (which calls `claude --print
+--permission-mode bypassPermissions`) using `CLAUDE_BIN` when set. Set
+`MUTAGEN_AGENT_LAUNCHER` to replace the launcher for either host or for a
+future host adapter.
 
-## Portable Harness Bundle
-
-Build a project-portable bundle for the current OS and CPU:
-
-```bash
-bash plugins/mutagen/scripts/build_portable_bundle.sh --release
-```
-
-The archive lands in `dist/mutagen-harness-<os>-<arch>.tar.gz` with a sibling
-`.sha256` file. Extract it elsewhere and run:
+If a host-specific install does not surface the plugin's commands or skills
+(for example: a portable copy under `.mutagen/mutagen/` that the host did not
+register), fall back to invoking the persona directly:
 
 ```bash
-bash mutagen-harness-<os>-<arch>/install.sh /path/to/project
-```
-
-That installs the harness at `/path/to/project/.mutagen/mutagen`. From the
-project, execute with:
-
-```bash
-export MUTAGEN_ROOT="$PWD/.mutagen/mutagen"
-bash "$MUTAGEN_ROOT/scripts/harness_runtime.sh" run-execute-next --workspace-root "$PWD" --host codex
+bash "$MUTAGEN_ROOT/bin/agent.sh" --host claude Shredder "<task>"
+bash "$MUTAGEN_ROOT/bin/agent.sh" --host codex  Shredder "<task>"
 ```
 
 Typical rhythm on a new project:

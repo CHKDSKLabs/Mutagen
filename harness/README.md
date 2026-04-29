@@ -52,15 +52,13 @@ executable, then this source crate through `cargo run`, then
 bash plugins/mutagen/scripts/build_harness_binary.sh --release
 ```
 
-For a local development deployment, use the dev launcher and doctor wrappers:
+For a local development deployment, use the doctor wrapper:
 
 ```bash
-bash plugins/mutagen/scripts/dev_console.sh --workspace-root /path/to/workspace
-bash plugins/mutagen/scripts/dashboard_dev.sh --workspace-root /path/to/workspace
 bash plugins/mutagen/scripts/doctor_dev.sh --workspace-root /path/to/workspace
 ```
 
-The deployment runbook lives in [DEPLOY_DEV.md](/mnt/c/Users/spork/dev/agentic_design_workflow/harness/DEPLOY_DEV.md).
+The deployment runbook lives in [DEPLOY_DEV.md](DEPLOY_DEV.md).
 
 Useful commands:
 
@@ -70,8 +68,6 @@ cargo run --manifest-path harness/Cargo.toml -- project create --name crew-sched
 cargo run --manifest-path harness/Cargo.toml -- project inspect
 cargo run --manifest-path harness/Cargo.toml -- project doctor
 cargo run --manifest-path harness/Cargo.toml -- project status
-cargo run --manifest-path harness/Cargo.toml -- project intake --prompt "Build a crew scheduling app for dispatchers. It should manage shifts, absences, and overtime."
-cargo run --manifest-path harness/Cargo.toml -- project intake --prompt "Build a crew scheduling app for dispatchers. It should manage shifts, absences, and overtime." --queue-feature
 cargo run --manifest-path harness/Cargo.toml -- project add-feature --title "Add due dates" --description "Tasks should include optional due dates."
 cargo run --manifest-path harness/Cargo.toml -- project features
 cargo run --manifest-path harness/Cargo.toml -- project plan-feature --feature-id feature-...
@@ -82,8 +78,6 @@ cargo run --manifest-path harness/Cargo.toml -- project feature-flow --title "Ad
 cargo run --manifest-path harness/Cargo.toml -- project execute-feature --feature-id feature-...
 cargo run --manifest-path harness/Cargo.toml -- project feature-progress --feature-id feature-...
 cargo run --manifest-path harness/Cargo.toml -- project dashboard
-cargo run --manifest-path harness/Cargo.toml -- project dashboard-serve --port 7788
-# dashboard-serve can now open on an empty workspace, create the project capsule/scaffold from the UI, then expose a persistent builder conversation, design bundle workbench, guided build readiness repairs, Claude/Codex host selector, preview/build controls, execution console, slice/debug artifacts, operator actions, queue management, a recent activity feed, and bootstrap health actions
 cargo run --manifest-path harness/Cargo.toml -- project blueprints
 cargo run --manifest-path harness/Cargo.toml -- project apply-blueprint
 cargo run --manifest-path harness/Cargo.toml -- project scaffold
@@ -101,10 +95,6 @@ cargo run --manifest-path harness/Cargo.toml -- validate-queue --queue slices/qu
 cargo run --manifest-path harness/Cargo.toml -- prepare-next --queue slices/queue.json --dry-run
 cargo run --manifest-path harness/Cargo.toml -- prepare-selected-slice --queue slices/queue.json --slice-id L1-orders-001 --dry-run
 cargo run --manifest-path harness/Cargo.toml -- prepare-cohort --queue slices/queue.json --host claude --dry-run
-cargo run --manifest-path harness/Cargo.toml -- run-execute-next --workspace-root . --host claude
-cargo run --manifest-path harness/Cargo.toml -- run-cohort-once --workspace-root . --host claude
-cargo run --manifest-path harness/Cargo.toml -- run-slice-once --workspace-root . --host claude --slice-id L1-orders-001
-cargo run --manifest-path harness/Cargo.toml -- dispatch-stage --workspace-root . --host claude --slice-id L1-orders-001
 cargo run --manifest-path harness/Cargo.toml -- dispatch-cohort-members --runner-script plugins/mutagen/scripts/run_slice_once.sh --host claude --member-json '{"slice_id":"L1-orders-001","worktree_path":".mutagen/worktrees/run/L1-orders-001","result_path":".mutagen/worktrees/run/L1-orders-001.result","status_path":".mutagen/worktrees/run/L1-orders-001.exit"}'
 cargo run --manifest-path harness/Cargo.toml -- apply-cohort-dispatch --member-json '{"slice_id":"L1-orders-001","worktree_path":".mutagen/worktrees/run/L1-orders-001","result_path":".mutagen/worktrees/run/L1-orders-001.result","status_path":".mutagen/worktrees/run/L1-orders-001.exit","outcome":{"status":"ready","slice_id":"L1-orders-001","worktree_path":".mutagen/worktrees/run/L1-orders-001","member_status":"completed","run_output":{"status":"completed"}}}'
 cargo run --manifest-path harness/Cargo.toml -- prepare-dispatch --slice-id L1-orders-001
@@ -139,22 +129,20 @@ machine-readable reasons such as `layer_mismatch`, `write_set_conflict`, or
 `cohort_limit_reached`, and writes evidence
 bundles for the selected cohort on non-dry runs.
 
-The Rust harness now owns the execution runners directly:
-`run-execute-next`, `run-cohort-once`, `run-slice-once`, and
-`dispatch-stage`. The plugin scripts with matching names are compatibility
-shims that resolve the harness binary and pass through to those commands. The
-native cohort runner fans selected siblings out into isolated git worktrees,
-runs the one-slice pipeline inside each workspace, then imports accepted
-outputs back into the main tree in queue order. State updates are emitted as
-author-output artifacts and applied back into the main workspace in queue
-order, so same-context siblings no longer get serialized just for sharing
-`project_state.md` or `infrastructure_state.md`.
+The plugin shell layer now has a real cohort executor at
+`plugins/mutagen/scripts/run_cohort_once.sh`. It fans selected siblings out
+into isolated git worktrees, runs the one-slice pipeline inside each
+workspace, then imports accepted outputs back into the main tree in queue
+order. State updates are now emitted as author-output artifacts and applied
+back into the main workspace in queue order, so same-context siblings no
+longer get serialized just for sharing `project_state.md` or
+`infrastructure_state.md`.
 
 `prepare-dispatch` is the canonical stage-prompt builder for `author` and
 `review`. It reads the active slice plus queue metadata, writes the prompt
 artifact under `.mutagen/state/dispatch/<slice_id>/`, and returns the target
-agent, capture path, required artifacts, and scope metadata so the runner can
-dispatch without re-assembling the contract in markdown.
+agent, capture path, required artifacts, and scope metadata so the shell layer
+can dispatch without re-assembling the contract in markdown.
 
 `record-review-verdict` is the canonical Stage 3 verdict normalizer. It reads
 Tiger Claw's persisted QA report, parses the verdict section, verifies the

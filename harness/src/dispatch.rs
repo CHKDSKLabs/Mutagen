@@ -113,27 +113,25 @@ pub fn prepare_dispatch(options: PrepareDispatchOptions) -> Result<PrepareDispat
         ScopeEnforcementMode::Hard
     };
 
+    let paths = DispatchPaths {
+        workspace_root: &workspace_root,
+        author_output_dir: &author_output_dir,
+        dispatch_root: &dispatch_root,
+        qa_report_path: &qa_report_path,
+        latest_qa_report_path: &latest_qa_report_path,
+    };
+
     match active_state.stage {
         Stage::Author => prepare_author_dispatch(
-            &workspace_root,
-            &author_output_dir,
-            &dispatch_root,
-            &qa_report_path,
+            &paths,
             slice,
             &active_state,
             scope_enforcement,
             options.dispatch_kind,
         ),
-        Stage::Review => prepare_review_dispatch(
-            &workspace_root,
-            &author_output_dir,
-            &dispatch_root,
-            &qa_report_path,
-            &latest_qa_report_path,
-            slice,
-            &active_state,
-            scope_enforcement,
-        ),
+        Stage::Review => {
+            prepare_review_dispatch(&paths, slice, &active_state, scope_enforcement)
+        }
         Stage::StructuralCheck | Stage::StateRecord => bail!(
             "dispatch preparation is only supported for `author` and `review`, not `{}`",
             stage_name(active_state.stage)
@@ -141,16 +139,31 @@ pub fn prepare_dispatch(options: PrepareDispatchOptions) -> Result<PrepareDispat
     }
 }
 
+/// Bundle of paths shared by author and review dispatch preparation. Reduces
+/// argument lists below the clippy `too_many_arguments` threshold without
+/// flattening the workspace-vs-stage-specific concerns.
+struct DispatchPaths<'a> {
+    workspace_root: &'a Path,
+    author_output_dir: &'a Path,
+    dispatch_root: &'a Path,
+    qa_report_path: &'a Path,
+    latest_qa_report_path: &'a Path,
+}
+
 fn prepare_author_dispatch(
-    workspace_root: &Path,
-    author_output_dir: &Path,
-    dispatch_root: &Path,
-    qa_report_path: &Path,
+    paths: &DispatchPaths<'_>,
     slice: &Slice,
     active_state: &crate::state::ActiveSliceState,
     scope_enforcement: ScopeEnforcementMode,
     requested_dispatch_kind: Option<AuthorDispatchKind>,
 ) -> Result<PrepareDispatchResult> {
+    let DispatchPaths {
+        workspace_root,
+        author_output_dir,
+        dispatch_root,
+        qa_report_path,
+        ..
+    } = *paths;
     let qa_report_exists = qa_report_path.is_file();
     let dispatch_kind = match requested_dispatch_kind {
         Some(AuthorDispatchKind::Initial) => AuthorDispatchKind::Initial,
@@ -214,15 +227,18 @@ fn prepare_author_dispatch(
 }
 
 fn prepare_review_dispatch(
-    workspace_root: &Path,
-    author_output_dir: &Path,
-    dispatch_root: &Path,
-    qa_report_path: &Path,
-    latest_qa_report_path: &Path,
+    paths: &DispatchPaths<'_>,
     slice: &Slice,
     active_state: &crate::state::ActiveSliceState,
     scope_enforcement: ScopeEnforcementMode,
 ) -> Result<PrepareDispatchResult> {
+    let DispatchPaths {
+        workspace_root,
+        author_output_dir,
+        dispatch_root,
+        qa_report_path,
+        latest_qa_report_path,
+    } = *paths;
     let author_output_path = author_output_dir.join(format!("{}.md", safe_file_name(&slice.id)));
     if !author_output_path.is_file() {
         bail!(

@@ -1,0 +1,45 @@
+# Rust
+/target/
+**/target/
+*.rs.bk
+*.pdb
+
+# Editor / IDE state
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Mutagen workspace state — should never be committed from a consumer repo
+# checkout. The plugin sources under plugins/mutagen/ are committed; the
+# per-workspace state directory is not. The root-level slices/ reviews/
+# .mutagen/ trees here are output the runtime creates when you run mutagen
+# against this repo as a workspace (don't); the canonical example lives at
+# examples/orders-demo/ and is exempt from these patterns.
+/.mutagen/
+/slices/
+/reviews/
+**/.mutagen/state/
+**/.mutagen/project.json
+**/.mutagen/queue-validation.json
+!examples/**/.mutagen/
+!examples/**/slices/
+!examples/**/reviews/
+
+# Local environment
+.env
+.env.local
+.env.*.local
+
+# Logs and debug
+*.log
+*.tmp
+dispatch.log
+dashboard.log
+
+# Claude / Codex local overrides
+.claude/settings.local.json
+.codex.local

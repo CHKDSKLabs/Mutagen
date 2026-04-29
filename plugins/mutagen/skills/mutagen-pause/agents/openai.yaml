@@ -1,0 +1,6 @@
+interface:
+  display_name: "mutagen — pause"
+  short_description: "Stage-boundary pause / resume / status for the execute-next loop"
+  brand_color: "#8B1A1A"
+  default_prompt: "Run $mutagen-pause on to stop the loop at the next stage boundary, or $mutagen-pause off to resume."
+allow_implicit_invocation: false

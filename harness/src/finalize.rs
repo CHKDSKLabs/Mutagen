@@ -171,6 +171,23 @@ pub fn finalize_slice(options: FinalizeSliceOptions) -> Result<FinalizeSliceResu
             );
         }
 
+        // human_check_needed.required is a binding contract, not a label. If a
+        // slice declares it requires a human check, finalize is gated until
+        // the check is resolved (resolved_at populated). Operators clear the
+        // gate via `update-slice --resolve-human-check`, which records the
+        // current timestamp on the slice. This replaces the older
+        // advisory-only behaviour where finalize completed silently.
+        if slice.human_check_needed.required && slice.human_check_needed.resolved_at.is_none() {
+            bail!(
+                "slice `{}` cannot finalize while `human_check_needed.required` \
+                 is set without `resolved_at`. Resolve the check (run \
+                 `update-slice --slice-id {} --resolve-human-check`) or flip \
+                 required to false in the queue, then retry.",
+                slice.id,
+                slice.id
+            );
+        }
+
         if slice.verdicts.bishop.is_none() {
             slice.verdicts.bishop = Some(BishopVerdict::Skip);
         }
@@ -209,16 +226,16 @@ pub fn finalize_slice(options: FinalizeSliceOptions) -> Result<FinalizeSliceResu
         .then(|| display_relative_to_workspace(&workspace_root, &qa_report_path));
     let evidence_bundle_path_display =
         display_relative_to_workspace(&workspace_root, &evidence_bundle_path);
-    let summary_body = render_summary(
-        &slice_snapshot,
-        &options.completed_at,
-        &duration,
+    let summary_body = render_summary(SummaryRenderInput {
+        slice: &slice_snapshot,
+        completed_at: &options.completed_at,
+        duration: &duration,
         micro_correction,
-        &files_touched,
-        &retry_path,
-        qa_report_path_display.as_deref(),
-        &evidence_bundle_path_display,
-    );
+        files_touched: &files_touched,
+        retry_path: &retry_path,
+        qa_report_path: qa_report_path_display.as_deref(),
+        evidence_bundle_path: &evidence_bundle_path_display,
+    });
 
     let dispatch_entry = DispatchLogEntry {
         slice_id: slice_snapshot.id.clone(),
@@ -330,16 +347,31 @@ fn apply_and_verify_state_update(
     Ok(true)
 }
 
-fn render_summary(
-    slice: &Slice,
-    completed_at: &str,
-    duration: &str,
+/// Argument bundle for `render_summary`. Bundles eight related fields so the
+/// function signature stays under the clippy `too_many_arguments` threshold
+/// without losing the per-field documentation that the named fields carry.
+struct SummaryRenderInput<'a> {
+    slice: &'a Slice,
+    completed_at: &'a str,
+    duration: &'a str,
     micro_correction: bool,
-    files_touched: &[String],
-    retry_path: &str,
-    qa_report_path: Option<&str>,
-    evidence_bundle_path: &str,
-) -> String {
+    files_touched: &'a [String],
+    retry_path: &'a str,
+    qa_report_path: Option<&'a str>,
+    evidence_bundle_path: &'a str,
+}
+
+fn render_summary(input: SummaryRenderInput<'_>) -> String {
+    let SummaryRenderInput {
+        slice,
+        completed_at,
+        duration,
+        micro_correction,
+        files_touched,
+        retry_path,
+        qa_report_path,
+        evidence_bundle_path,
+    } = input;
     let mut body = String::new();
     body.push_str(&format!("# Slice summary — {}\n", slice.id));
     body.push_str(&format!("**Title:** {}\n", slice.title));

@@ -104,6 +104,14 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Default CLAUDE_BIN to the packaged non-interactive wrapper so any agent.sh
+# invocation reached from a Rust-harness dispatch (or a dev console run) does
+# not stall on a permission prompt. Caller can override by exporting CLAUDE_BIN
+# explicitly before invoking the harness.
+if [[ -z "${CLAUDE_BIN:-}" && -x "$PLUGIN_ROOT/bin/claude-harness.sh" ]]; then
+  export CLAUDE_BIN="$PLUGIN_ROOT/bin/claude-harness.sh"
+fi
+
 set +e
 HARNESS_BIN="$(resolve_harness_binary "$PLUGIN_ROOT")"
 HARNESS_BIN_STATUS=$?
