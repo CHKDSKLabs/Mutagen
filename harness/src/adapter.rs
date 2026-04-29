@@ -10,6 +10,8 @@ pub enum HostKind {
     Stub,
     Codex,
     Claude,
+    Ollama,
+    LmStudio,
 }
 
 pub trait HostAdapter {
@@ -237,6 +239,8 @@ pub fn adapter_for(host: HostKind) -> Box<dyn HostAdapter> {
         HostKind::Stub => Box::new(StubHostAdapter),
         HostKind::Codex => Box::new(CodexHostAdapter),
         HostKind::Claude => Box::new(ClaudeHostAdapter),
+        HostKind::Ollama => Box::new(OllamaHostAdapter),
+        HostKind::LmStudio => Box::new(LmStudioHostAdapter),
     }
 }
 
@@ -300,6 +304,48 @@ impl HostAdapter for ClaudeHostAdapter {
             can_stream_tool_events: true,
             can_restrict_tools_per_stage: true,
             can_interrupt_running_stage: true,
+        }
+    }
+}
+
+// Ollama and LM Studio are local OpenAI-compatible inference providers, not
+// agentic CLIs. They can stream chat tokens but expose no harness-grade
+// scope/tool/worktree controls — those have to be enforced upstream by the
+// runner script that drives them.
+#[derive(Debug, Default)]
+pub struct OllamaHostAdapter;
+
+impl HostAdapter for OllamaHostAdapter {
+    fn kind(&self) -> HostKind {
+        HostKind::Ollama
+    }
+
+    fn capabilities(&self) -> HostCapabilities {
+        HostCapabilities {
+            can_enforce_pre_write: false,
+            can_isolate_worktree: false,
+            can_stream_tool_events: false,
+            can_restrict_tools_per_stage: false,
+            can_interrupt_running_stage: false,
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct LmStudioHostAdapter;
+
+impl HostAdapter for LmStudioHostAdapter {
+    fn kind(&self) -> HostKind {
+        HostKind::LmStudio
+    }
+
+    fn capabilities(&self) -> HostCapabilities {
+        HostCapabilities {
+            can_enforce_pre_write: false,
+            can_isolate_worktree: false,
+            can_stream_tool_events: false,
+            can_restrict_tools_per_stage: false,
+            can_interrupt_running_stage: false,
         }
     }
 }

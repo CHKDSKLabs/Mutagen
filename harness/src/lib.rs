@@ -11,6 +11,8 @@ pub mod config;
 pub mod dispatch;
 pub mod evidence;
 pub mod finalize;
+pub mod inference;
+pub mod model_registry;
 pub mod notifications;
 pub mod policy;
 pub mod project;

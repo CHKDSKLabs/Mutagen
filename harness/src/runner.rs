@@ -1457,6 +1457,10 @@ fn host_command(host: HostKind, profile: &str, framing: String) -> Result<Comman
         HostKind::Stub => bail!(
             "unsupported host 'stub'. Set MUTAGEN_AGENT_LAUNCHER to provide a custom launcher."
         ),
+        HostKind::Ollama | HostKind::LmStudio => bail!(
+            "host '{:?}' is an inference provider, not an agentic launcher; use `complete-chat` for direct prompting",
+            host
+        ),
     }
 }
 
@@ -2086,6 +2090,8 @@ fn host_kind_name(host: HostKind) -> &'static str {
         HostKind::Stub => "stub",
         HostKind::Codex => "codex",
         HostKind::Claude => "claude",
+        HostKind::Ollama => "ollama",
+        HostKind::LmStudio => "lmstudio",
     }
 }
 

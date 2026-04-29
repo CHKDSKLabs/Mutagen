@@ -201,6 +201,8 @@ fn host_kind_name(host: HostKind) -> &'static str {
         HostKind::Codex => "codex",
         HostKind::Claude => "claude",
         HostKind::Stub => "stub",
+        HostKind::Ollama => "ollama",
+        HostKind::LmStudio => "lmstudio",
     }
 }
 
