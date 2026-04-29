@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chkdsklabs.example/mutagen-harness/dispatch-log-entry.schema.json",
+  "title": "Mutagen Harness Dispatch Log Entry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "slice_id",
+    "title",
+    "agent",
+    "layer",
+    "bounded_context",
+    "status",
+    "completed_at",
+    "attempts",
+    "micro_correction",
+    "state_verified",
+    "summary_path",
+    "evidence_bundle_path",
+    "verdicts",
+    "notes"
+  ],
+  "properties": {
+    "slice_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string"
+    },
+    "agent": {
+      "type": "string",
+      "minLength": 1
+    },
+    "layer": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "bounded_context": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": ["completed", "qa_gap", "qa_skip"]
+    },
+    "completed_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "attempts": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "micro_correction": {
+      "type": "boolean"
+    },
+    "state_verified": {
+      "type": "boolean"
+    },
+    "summary_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evidence_bundle_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "qa_report_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "verdicts": {
+      "$ref": "queue.schema.json#/$defs/verdicts"
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}

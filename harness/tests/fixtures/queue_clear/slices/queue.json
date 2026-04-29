@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "generated_at": "2026-04-22T12:00:00Z",
+  "generated_by": "Shredder",
+  "pipeline_mode": "full",
+  "planning_advisories": [],
+  "slices": [
+    {
+      "id": "L1-core-001",
+      "title": "Completed foundation slice",
+      "phase": "phase_1",
+      "status": "completed",
+      "author_agent": "Bebop",
+      "layer": 1,
+      "bounded_context": "core",
+      "target_loc": 300,
+      "objective": "Already done.",
+      "context_to_update": "project_state.md",
+      "implementation_details": [
+        "This fixture slice is already complete."
+      ],
+      "review_required": false,
+      "attempts": 1,
+      "micro_corrections_used": 0,
+      "depends_on": [],
+      "adjacent_scope_allowed": [],
+      "write_set": [
+        "src/core/**"
+      ],
+      "traces_to": {
+        "prd": [
+          "[FR-001]"
+        ],
+        "adr": [
+          "ADR-0001"
+        ],
+        "ddd": [
+          "CoreAggregate"
+        ],
+        "isc": [
+          "[ISC-001]"
+        ],
+        "dsd": [
+          "[DSD-001]"
+        ]
+      },
+      "verification_steps": {
+        "acceptance": "cargo test",
+        "isc_detection": "done",
+        "dsd_conformance": "done"
+      },
+      "human_check_needed": {
+        "required": false,
+        "reason": "",
+        "resolved_at": null
+      }
+    }
+  ]
+}

@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mutagen.local/schemas/project-capsule.schema.json",
+  "title": "Mutagen Project Capsule",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "name",
+    "stack",
+    "design_system",
+    "documents",
+    "queue",
+    "workflow_config",
+    "design",
+    "state",
+    "commands",
+    "preview"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stack": {
+      "type": "string"
+    },
+    "design_system": {
+      "type": "string"
+    },
+    "deploy_target": {
+      "type": "string"
+    },
+    "documents": {
+      "type": "object",
+      "required": ["prd", "adr", "ddd", "isc", "dsd"],
+      "properties": {
+        "prd": { "type": "string" },
+        "adr": { "type": "string" },
+        "ddd": { "type": "string" },
+        "isc": { "type": "string" },
+        "dsd": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "queue": {
+      "type": "string"
+    },
+    "workflow_config": {
+      "type": "string"
+    },
+    "design": {
+      "type": "object",
+      "required": ["root", "brief", "tokens", "components", "screens", "screenshots"],
+      "properties": {
+        "root": { "type": "string" },
+        "brief": { "type": "string" },
+        "tokens": { "type": "string" },
+        "components": { "type": "string" },
+        "screens": { "type": "string" },
+        "screenshots": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "state": {
+      "type": "object",
+      "required": ["project_state", "decisions_log", "build_log", "deployments_log"],
+      "properties": {
+        "project_state": { "type": "string" },
+        "decisions_log": { "type": "string" },
+        "build_log": { "type": "string" },
+        "deployments_log": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "commands": {
+      "type": "object",
+      "required": ["setup", "dev", "test", "build"],
+      "properties": {
+        "setup": { "type": "string" },
+        "dev": { "type": "string" },
+        "test": { "type": "string" },
+        "build": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "preview": {
+      "type": "object",
+      "required": ["url", "command_kind", "readiness_timeout_seconds"],
+      "properties": {
+        "url": { "type": "string" },
+        "command_kind": {
+          "type": "string",
+          "enum": ["setup", "dev", "test", "build"]
+        },
+        "readiness_timeout_seconds": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

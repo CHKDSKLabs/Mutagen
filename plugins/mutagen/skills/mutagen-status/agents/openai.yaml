@@ -1,0 +1,6 @@
+interface:
+  display_name: "mutagen — status"
+  short_description: "Report workflow state — upstream documents, slice queue, active slice, gate telemetry, open escalations"
+  brand_color: "#8B1A1A"
+  default_prompt: "Run $mutagen-status to inspect the workflow."
+allow_implicit_invocation: false

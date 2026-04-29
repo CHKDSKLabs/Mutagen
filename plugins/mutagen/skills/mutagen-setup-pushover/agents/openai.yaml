@@ -1,0 +1,6 @@
+interface:
+  display_name: "mutagen — setup-pushover"
+  short_description: "First-run Pushover configuration wizard for halt notifications"
+  brand_color: "#8B1A1A"
+  default_prompt: "Run $mutagen-setup-pushover to wire up push notifications."
+allow_implicit_invocation: false

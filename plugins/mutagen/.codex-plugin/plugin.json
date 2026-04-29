@@ -1,0 +1,28 @@
+{
+  "name": "mutagen",
+  "version": "0.2.3",
+  "description": "End-to-end agentic design workflow. Thirteen personas execute PRD/ADR/DDD/ISC/DSD design bundles through Shredder's dependency-ordered slicing and Karai's reviewed dispatch.",
+  "author": {
+    "name": "CHKDSK Labs",
+    "url": "https://github.com/ObtuseAglet/agentic_design_workflow"
+  },
+  "homepage": "https://github.com/ObtuseAglet/agentic_design_workflow",
+  "repository": "https://github.com/ObtuseAglet/agentic_design_workflow",
+  "license": "MIT",
+  "keywords": ["design", "architecture", "workflow", "orchestration", "multi-agent"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "mutagen",
+    "shortDescription": "Agentic design workflow with explicit slice-and-dispatch discipline",
+    "longDescription": "Mutagen drives a five-document design bundle (PRD, ADR, DDD, ISC, DSD) through dependency-ordered slicing and reviewed dispatch. April interviews the user and authors the bundle; Shredder slices it; Karai dispatches each slice to the appropriate executor persona (Bebop, Baxter, Chaplin, Metalhead, Splinter, Tatsu, Krang); Bishop and Tiger Claw review in parallel. Explicit invocation only — every skill requires $mutagen-* entry.",
+    "developerName": "CHKDSK Labs",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Write"],
+    "defaultPrompt": [
+      "Run /$mutagen-status to inspect the workflow state.",
+      "Kick off a design bundle with /$mutagen-elicit.",
+      "Execute the next pending slice via /$mutagen-execute-next."
+    ],
+    "brandColor": "#8B1A1A"
+  }
+}

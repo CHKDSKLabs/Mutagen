@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chkdsklabs.example/mutagen-harness/gate-verdict.schema.json",
+  "title": "Mutagen Harness Gate Verdict",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "findings", "loc"],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["pass", "fail"]
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "loc": {
+      "type": "object"
+    },
+    "stop_condition": {
+      "type": "string",
+      "enum": [
+        "queue_clear",
+        "queue_stalled",
+        "structural_failure",
+        "scope_violation",
+        "retry_budget_exhausted"
+      ]
+    },
+    "notifications": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/notification"
+      }
+    }
+  },
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["check", "severity", "detail"],
+      "properties": {
+        "check": {
+          "type": "string",
+          "minLength": 1
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["fail", "warn"]
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "notification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["event", "title", "message"],
+      "properties": {
+        "event": {
+          "type": "string",
+          "enum": [
+            "escalation",
+            "structural_fail",
+            "scope_violation",
+            "queue_clear",
+            "user_interrupt",
+            "layer_complete",
+            "milestone"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,6 @@
+interface:
+  display_name: "mutagen — elicit"
+  short_description: "Run April to interview the user and author the five upstream design documents"
+  brand_color: "#8B1A1A"
+  default_prompt: "Run $mutagen-elicit to kick off or iterate the design bundle."
+allow_implicit_invocation: false
