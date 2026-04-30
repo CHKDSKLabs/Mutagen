@@ -18,6 +18,7 @@ pub mod policy;
 pub mod project;
 pub mod queue;
 pub mod queue_update;
+pub mod resume_slice;
 pub mod review;
 pub mod review_record;
 pub mod runner;

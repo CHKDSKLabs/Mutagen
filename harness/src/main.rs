@@ -39,6 +39,7 @@ use mutagen_harness::queue::{
     BishopVerdict, KaraiStructuralVerdict, SliceStatus, TigerClawVerdict,
 };
 use mutagen_harness::queue_update::{UpdateSliceOptions, update_slice};
+use mutagen_harness::resume_slice::{ResumeSliceOptions, resume_slice};
 use mutagen_harness::review::{ReviewDecisionOptions, review_decision};
 use mutagen_harness::review_record::{RecordReviewVerdictOptions, record_review_verdict};
 use mutagen_harness::runner::{
@@ -440,6 +441,27 @@ enum Command {
         bump_attempts: bool,
         #[arg(long)]
         bump_micro_corrections: bool,
+    },
+    /// Force-reset the active slice to the given slice/stage. For unsticking a wedged
+    /// pipeline -- regenerates the active-slice.json + evidence bundle from the queue
+    /// row and re-points the orchestrator at the chosen stage. Bumps slice status to
+    /// in_progress if it was pending. Refuses on terminal statuses (completed,
+    /// escalated, refused) so this can't accidentally undo a closed slice.
+    ResumeSlice {
+        #[arg(long, default_value = ".")]
+        workspace_root: PathBuf,
+        #[arg(long, default_value = "slices/queue.json")]
+        queue: PathBuf,
+        #[arg(long, default_value = ".claude/workflow.json")]
+        workflow_config: PathBuf,
+        #[arg(long, default_value = ".mutagen/state/active-slice.json")]
+        active_state: PathBuf,
+        #[arg(long)]
+        slice_id: String,
+        #[arg(long, value_enum, default_value_t = Stage::Author)]
+        from_stage: Stage,
+        #[arg(long, value_enum, default_value_t = HostKind::Stub)]
+        host: HostKind,
     },
     FinalizeSlice {
         #[arg(long, default_value = ".")]
@@ -1520,6 +1542,27 @@ fn main() -> Result<()> {
                 active_agent,
                 bump_attempts,
                 bump_micro_corrections,
+            })?;
+
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        }
+        Command::ResumeSlice {
+            workspace_root,
+            queue,
+            workflow_config,
+            active_state,
+            slice_id,
+            from_stage,
+            host,
+        } => {
+            let result = resume_slice(ResumeSliceOptions {
+                workspace_root,
+                queue_path: queue,
+                workflow_config_path: workflow_config,
+                active_state_path: active_state,
+                slice_id,
+                from_stage,
+                host,
             })?;
 
             println!("{}", serde_json::to_string_pretty(&result)?);
