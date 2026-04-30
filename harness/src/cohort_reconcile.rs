@@ -438,10 +438,7 @@ fn collect_name_status_entries(worktree_root: &Path, args: &[&str]) -> Result<Ve
     let mut fields = output.stdout.split(|byte| *byte == 0);
     let mut entries = Vec::new();
 
-    loop {
-        let Some(status_bytes) = fields.next() else {
-            break;
-        };
+    while let Some(status_bytes) = fields.next() {
         if status_bytes.is_empty() {
             break;
         }
