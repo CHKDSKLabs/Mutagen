@@ -186,7 +186,11 @@ pub fn structural_check(options: StructuralCheckOptions) -> StructuralCheckRepor
     }
 }
 
-fn required_sections_for_author(author_agent: &str) -> Option<&'static [&'static str]> {
+// Single source of truth for "what literal markers must appear in this persona's
+// author output". Both the structural check and the dispatch prompt-renderer consult
+// this -- if they disagree, an author can produce output that the prompt told them
+// to write but which the structural check then rejects. So: never duplicate this list.
+pub fn required_sections_for_author(author_agent: &str) -> Option<&'static [&'static str]> {
     match author_agent {
         "Bebop" => Some(&[
             "🛠️ Execution:",

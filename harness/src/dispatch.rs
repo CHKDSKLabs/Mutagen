@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use crate::adapter::ScopeEnforcementMode;
 use crate::queue::{Slice, SliceStatus};
 use crate::state::{Stage, load_active_slice};
+use crate::structural::required_sections_for_author;
 use crate::validation::load_queue_file;
 
 #[derive(Debug, Clone)]
@@ -348,6 +349,7 @@ fn render_author_prompt(
         &slice.implementation_details,
         "None recorded.",
     );
+    push_output_contract(&mut body, &active_state.active_agent);
     body.push("### Verification expectations".to_string());
     body.push(format!(
         "- Acceptance: {}",
@@ -488,6 +490,23 @@ fn render_review_prompt(
     body.push("- Follow the persona's output contract exactly. The machine-readable Retry Contract block is mandatory.".to_string());
 
     body.join("\n")
+}
+
+// Mirrors the structural check's per-persona section list into the prompt the author
+// actually receives. Same source (`required_sections_for_author`), so the moment that
+// list moves the prompt moves with it -- no Shredder freelancing, no drift.
+fn push_output_contract(lines: &mut Vec<String>, author_agent: &str) {
+    let Some(sections) = required_sections_for_author(author_agent) else {
+        return;
+    };
+
+    lines.push("### Output contract".to_string());
+    lines.push(format!(
+        "- The {author_agent} structural check requires every literal marker below to appear somewhere in your output. Missing any marker fails the slice."
+    ));
+    for section in sections {
+        lines.push(format!("- `{section}`"));
+    }
 }
 
 fn push_traces(lines: &mut Vec<String>, traces: &crate::queue::TraceSet) {

@@ -27,6 +27,43 @@ fn prepare_dispatch_writes_initial_author_prompt() {
     assert!(prompt.contains("Dispatch kind: initial"));
     assert!(prompt.contains("Read this bundle once before coding"));
     assert!(prompt.contains("Allowed write globs"));
+
+    // The author prompt MUST surface the persona's structural-check contract verbatim,
+    // so a Bebop slice cannot author missing markers and then escalate structurally.
+    assert!(prompt.contains("### Output contract"));
+    assert!(prompt.contains("Bebop structural check"));
+    for marker in [
+        "🛠️ Execution:",
+        "Intake Report",
+        "Code Artifacts",
+        "ISC Upholding Map",
+        "Verification Artifacts",
+        "State Update",
+    ] {
+        assert!(
+            prompt.contains(marker),
+            "Bebop output contract is missing marker `{marker}`"
+        );
+    }
+}
+
+#[test]
+fn prepare_dispatch_review_prompt_does_not_repeat_output_contract() {
+    let workspace = FixtureWorkspace::copy("basic_ready");
+    workspace.prepare_ready_slice();
+    workspace.write_text(
+        ".mutagen/state/author-output/L1-orders-001.md",
+        "### 🛠️ Execution: L1-orders-001\n",
+    );
+    workspace.transition_to_review();
+
+    let result = prepare_dispatch(workspace.dispatch_options(None))
+        .expect("review dispatch preparation should succeed");
+
+    let prompt = fs::read_to_string(&result.prompt_path).expect("prompt should read");
+    // By the time we render a review prompt the structural check has already passed --
+    // the reviewer doesn't need the author's section list quoted at them.
+    assert!(!prompt.contains("### Output contract"));
 }
 
 #[test]
