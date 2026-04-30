@@ -89,3 +89,36 @@ Required shape:
 
 This file is the durable human-readable closeout. The orchestrator should
 reference it instead of carrying author or reviewer transcripts forward.
+
+## Shredder Dual-Emission Contract
+
+Shredder emits two artifacts from the same slicing pass:
+
+- `slices/slicemap.md` — human-readable planning + review artifact. See
+  [`plugins/mutagen/guides/slicemap-spec.md`](../plugins/mutagen/guides/slicemap-spec.md).
+- `slices/queue.json` — canonical machine-readable execution artifact. See
+  [`plugins/mutagen/guides/queue-schema.md`](../plugins/mutagen/guides/queue-schema.md)
+  and [`schemas/queue.schema.json`](schemas/queue.schema.json).
+
+That split gives reviewable prose without teaching the runtime to scrape
+novels, deterministic execution contracts, smaller prompts during execution,
+and less drift between planning and runtime state.
+
+### Emission rules
+
+- Both artifacts must describe the same slice set.
+- `queue.json` is authoritative when a mismatch exists.
+- Every execution-critical fact must appear in `queue.json`.
+- The slicemap may contain extra explanation, rationale, and review notes.
+- The harness validates `queue.json` immediately after Shredder emits it.
+
+### Validation
+
+```bash
+cargo run --manifest-path harness/Cargo.toml -- validate-queue --queue slices/queue.json
+```
+
+The validator is the first consumer of Shredder output. If it flags errors,
+the queue is not ready for execution. Shredder is not done when it has
+written readable slices — Shredder is done when it has emitted a reviewable
+slicemap and a valid queue JSON artifact that passes harness validation.

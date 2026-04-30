@@ -121,6 +121,6 @@ The harness must stop and persist `halted` when any of these events occur:
 - Every transition that changes queue state must be persisted before the next stage dispatch.
 - Every degraded host capability must be recorded in runtime state.
 
-## Immediate implication for the harness code
+## Implication for the runtime
 
-The first executable runtime should treat this file as the contract and make illegal transitions impossible without an explicit error. If the current workflow can do something this state machine cannot represent, that is a design bug we should surface instead of hiding under prompt confetti.
+This file is the contract. Illegal transitions must surface as explicit errors, never silent no-ops. If the runtime can do something this state machine cannot represent, that is a design bug — fix the spec or fix the code, but don't hide the gap under prompt confetti.

@@ -26,7 +26,8 @@ the runtime bar: be precise, cite sources, and don't widen scope silently.
    ```
 5. **Update the relevant doc.** If you change a CLI flag, update both the
    wrapper script's usage and the matching command/skill markdown. If you
-   change the queue schema, update `harness/QUEUE_SCHEMA.md`.
+   change the queue schema, update `harness/schemas/queue.schema.json` plus
+   the user-facing guide at `plugins/mutagen/guides/queue-schema.md`.
 
 ## Style
 

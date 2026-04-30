@@ -84,17 +84,6 @@ The adapter's execution profile is the canonical answer to questions like:
 8. Persist verdicts and either complete, retry, or escalate.
 9. Emit a summary and continue until a stop condition fires.
 
-## Migration rule
+## Plugin / harness invariant
 
-`plugins/mutagen/**` should become a client of this harness, not the place where the canonical runtime lives.
-
-## First executable target
-
-The first code we write under `harness/` should not be another prompt bundle. It should be a small runtime skeleton with:
-
-- queue loading
-- ready-slice selection
-- active-slice state writing
-- evidence bundle writing
-- a single deterministic gate
-- a host adapter interface with one stub implementation
+`plugins/mutagen/**` is a client of this harness. The plugin holds personas, prompts, slash commands, skills, and host-adapter glue; the harness holds the runtime. A change in plugin prose must never change runtime semantics — if the runtime cared, it would already enforce the rule itself.

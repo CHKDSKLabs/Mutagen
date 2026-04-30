@@ -358,7 +358,6 @@ be running.
 Schema and artifact contracts live here:
 
 - `harness/ARTIFACT_SCHEMAS.md`
-- `harness/RULE_INVENTORY.md`
 - `harness/schemas/*.schema.json`
 
 Validate schema files parse:
