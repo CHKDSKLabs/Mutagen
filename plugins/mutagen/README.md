@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="../../assets/mutagen.png" alt="Mutagen — Rust harness for Claude + Codex" width="280">
+</p>
+
 # mutagen
 
 The `mutagen` plugin packages an end-to-end agentic design workflow for Claude Code: thirteen subagents, a PreToolUse scope-enforcement hook, nine slash commands, plus templates and authoring guides for the five upstream design documents that feed the pipeline.

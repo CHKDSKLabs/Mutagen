@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/mutagen.png" alt="Mutagen — Rust harness for Claude + Codex" width="320">
+</p>
+
 # Mutagen — agentic design workflow marketplace
 
 A dual-harness plugin marketplace. Ships one plugin today — **`mutagen`** —
