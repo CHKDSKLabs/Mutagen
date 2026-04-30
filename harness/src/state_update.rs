@@ -36,14 +36,84 @@ pub fn parse_state_update(author_output: &str, slice_id: &str) -> Result<ParsedS
 
     let section = extract_state_update_section(author_output)?;
     let body = extract_state_update_body(&section)?;
-    let marker = first_nonempty_line(&body)
-        .with_context(|| format!("State Update block for `{slice_id}` is empty"))?;
+    let marker = first_nonempty_line(&body).with_context(|| {
+        format!(
+            "State Update block for `{slice_id}` is empty.\n\n{}",
+            state_update_format_help(slice_id)
+        )
+    })?;
 
     if !marker.contains(slice_id) {
-        bail!("State Update block must start with a slice marker containing `{slice_id}`");
+        let mut message = format!(
+            "State Update block must start with a slice marker containing `{slice_id}` -- got `{marker}`"
+        );
+        if pre_fence_mentions(&section, slice_id) {
+            message.push_str(
+                "\n\nHint: a line mentioning the slice id was found BEFORE the fenced block. \
+                 Move the marker INSIDE the ``` fence -- the parser only reads fenced content \
+                 once a fence is present.",
+            );
+        } else if let Some(hint) = diagnose_marker_problem(&body, slice_id) {
+            message.push_str("\n\nHint: ");
+            message.push_str(&hint);
+        }
+        message.push_str("\n\n");
+        message.push_str(&state_update_format_help(slice_id));
+        bail!("{}", message);
     }
 
     Ok(ParsedStateUpdate { body, marker })
+}
+
+fn state_update_format_help(slice_id: &str) -> String {
+    format!(
+        "Expected format -- the marker must be the FIRST non-blank line inside a markdown\n\
+         fenced block under `## State Update`, on its own line, no `+`/`-`/`@@` diff prefix:\n\n\
+         ## State Update\n\n\
+         ```\n\
+         ### {slice_id} — <YYYY-MM-DD>\n\n\
+         (notes about what this slice changed)\n\
+         ```"
+    )
+}
+
+fn diagnose_marker_problem(body: &str, slice_id: &str) -> Option<String> {
+    let first = body.lines().map(str::trim).find(|line| !line.is_empty())?;
+
+    if first.contains(slice_id) {
+        return Some(format!(
+            "first non-blank line `{first}` mentions `{slice_id}` but is not a clean marker -- \
+             it must be just `### {slice_id} — <date>` with no surrounding narrative."
+        ));
+    }
+
+    let later_marker = body
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .find(|line| line.contains(slice_id));
+
+    if let Some(later) = later_marker {
+        if first.starts_with('+') || first.starts_with('-') || first.starts_with("@@") {
+            return Some(format!(
+                "looks like a unified-diff fence -- found marker line `{later}` later in the block. \
+                 The fence must contain plain markdown, not a diff. Drop the `+`/`-`/`@@` prefixes."
+            ));
+        }
+        return Some(format!(
+            "found marker line `{later}` later in the block. It must be the FIRST non-blank line, \
+             not preceded by other content."
+        ));
+    }
+
+    None
+}
+
+fn pre_fence_mentions(section: &str, slice_id: &str) -> bool {
+    section
+        .lines()
+        .take_while(|line| !line.trim_start().starts_with("```"))
+        .any(|line| line.contains(slice_id))
 }
 
 pub fn apply_state_update_block(context_path: &Path, update: &ParsedStateUpdate) -> Result<bool> {

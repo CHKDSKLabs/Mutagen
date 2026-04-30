@@ -74,6 +74,57 @@ fn apply_state_update_for_slice_appends_once() {
     );
 }
 
+#[test]
+fn parse_state_update_marker_mismatch_includes_worked_example() {
+    let output = "### 🛠️ Execution: L1-orders-001\n#### State Update\n```\nrandom narrative without a marker\n```\n";
+
+    let err = parse_state_update(output, "L1-orders-001")
+        .expect_err("missing marker should fail")
+        .to_string();
+
+    assert!(err.contains("must start with a slice marker"));
+    assert!(err.contains("Expected format"));
+    assert!(err.contains("### L1-orders-001 — <YYYY-MM-DD>"));
+}
+
+#[test]
+fn parse_state_update_detects_pre_fence_marker() {
+    let output =
+        "#### State Update\n### L1-orders-001 — 2026-04-23\n```\njust some notes go here\n```\n";
+
+    let err = parse_state_update(output, "L1-orders-001")
+        .expect_err("pre-fence marker should fail")
+        .to_string();
+
+    assert!(err.contains("BEFORE the fenced block"));
+    assert!(err.contains("Move the marker INSIDE"));
+}
+
+#[test]
+fn parse_state_update_detects_diff_prefix_marker() {
+    let output =
+        "#### State Update\n```\n+ context line\n+ ### L1-orders-001 — 2026-04-23\n+ notes\n```\n";
+
+    let err = parse_state_update(output, "L1-orders-001")
+        .expect_err("diff-prefixed marker should fail")
+        .to_string();
+
+    assert!(err.contains("unified-diff fence"));
+    assert!(err.contains("Drop the `+`/`-`/`@@` prefixes"));
+}
+
+#[test]
+fn parse_state_update_detects_marker_buried_after_narrative() {
+    let output =
+        "#### State Update\n```\nSome lead-in narrative.\n### L1-orders-001 — 2026-04-23\n```\n";
+
+    let err = parse_state_update(output, "L1-orders-001")
+        .expect_err("buried marker should fail")
+        .to_string();
+
+    assert!(err.contains("It must be the FIRST non-blank line"));
+}
+
 struct FixtureWorkspace {
     root: PathBuf,
 }
