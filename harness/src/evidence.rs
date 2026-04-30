@@ -18,18 +18,33 @@ pub fn render_evidence_bundle(workspace_root: &Path, slice: &Slice) -> Result<St
                 prd_doc.as_deref().unwrap_or_default(),
                 &citation,
             )
-            .ok_or_else(|| anyhow::anyhow!("failed to resolve PRD citation `{citation}`"))?;
+            .ok_or_else(|| citation_resolution_error("PRD", &citation))?;
             Ok(render_block(&citation, &excerpt))
         })
         .collect::<Result<Vec<_>>>()?;
 
+    // Try the per-file layout first (one ADR-XXX.md per decision); if a citation
+    // doesn't resolve there, fall back to a consolidated docs/ADR.md or ADR.md and
+    // pull the section out by heading like we do for DDD/ISC/DSD.
+    let consolidated_adr = load_consolidated_adr(workspace_root)?;
     let adr_blocks = unique(&slice.traces_to.adr)
         .into_iter()
         .map(|citation| {
-            let path = resolve_adr_path(workspace_root, &citation)?;
-            let body = fs::read_to_string(&path)
-                .with_context(|| format!("failed to read ADR file at {}", display_path(&path)))?;
-            Ok(render_block(&citation, body.trim()))
+            if let Ok(path) = resolve_adr_path(workspace_root, &citation) {
+                let body = fs::read_to_string(&path).with_context(|| {
+                    format!("failed to read ADR file at {}", display_path(&path))
+                })?;
+                return Ok(render_block(&citation, body.trim()));
+            }
+
+            if let Some(doc) = consolidated_adr.as_deref() {
+                let excerpt = extract_section_matching_heading(doc, &citation)
+                    .or_else(|| extract_section_containing_marker(doc, &citation))
+                    .ok_or_else(|| citation_resolution_error("ADR", &citation))?;
+                return Ok(render_block(&citation, &excerpt));
+            }
+
+            Err(citation_resolution_error("ADR", &citation))
         })
         .collect::<Result<Vec<_>>>()?;
 
@@ -44,9 +59,7 @@ pub fn render_evidence_bundle(workspace_root: &Path, slice: &Slice) -> Result<St
                             &citation,
                         )
                     })
-                    .ok_or_else(|| {
-                        anyhow::anyhow!("failed to resolve DDD citation `{citation}`")
-                    })?;
+                    .ok_or_else(|| citation_resolution_error("DDD", &citation))?;
             Ok(render_block(&citation, &excerpt))
         })
         .collect::<Result<Vec<_>>>()?;
@@ -58,7 +71,7 @@ pub fn render_evidence_bundle(workspace_root: &Path, slice: &Slice) -> Result<St
                 isc_doc.as_deref().unwrap_or_default(),
                 &citation,
             )
-            .ok_or_else(|| anyhow::anyhow!("failed to resolve ISC citation `{citation}`"))?;
+            .ok_or_else(|| citation_resolution_error("ISC", &citation))?;
             Ok(render_block(&citation, &excerpt))
         })
         .collect::<Result<Vec<_>>>()?;
@@ -70,7 +83,7 @@ pub fn render_evidence_bundle(workspace_root: &Path, slice: &Slice) -> Result<St
                 dsd_doc.as_deref().unwrap_or_default(),
                 &citation,
             )
-            .ok_or_else(|| anyhow::anyhow!("failed to resolve DSD citation `{citation}`"))?;
+            .ok_or_else(|| citation_resolution_error("DSD", &citation))?;
             Ok(render_block(&citation, &excerpt))
         })
         .collect::<Result<Vec<_>>>()?;
@@ -141,6 +154,27 @@ fn resolve_named_doc_path(workspace_root: &Path, name: &str) -> Result<PathBuf> 
                 display_path(workspace_root)
             )
         })
+}
+
+fn load_consolidated_adr(workspace_root: &Path) -> Result<Option<String>> {
+    let candidates = [
+        workspace_root.join("docs").join("ADR.md"),
+        workspace_root.join("ADR.md"),
+    ];
+
+    for path in candidates {
+        if path.is_file() {
+            let body = fs::read_to_string(&path).with_context(|| {
+                format!(
+                    "failed to read consolidated ADR doc at {}",
+                    display_path(&path)
+                )
+            })?;
+            return Ok(Some(body));
+        }
+    }
+
+    Ok(None)
 }
 
 fn resolve_adr_path(workspace_root: &Path, citation: &str) -> Result<PathBuf> {
@@ -253,23 +287,145 @@ fn unique_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
 
 fn extract_section_containing_marker(text: &str, marker: &str) -> Option<String> {
     let lines: Vec<&str> = text.lines().collect();
-    let hit_index = lines.iter().position(|line| line.contains(marker))?;
-    extract_section_around_index(&lines, hit_index)
+
+    for candidate in literal_candidates(marker) {
+        if candidate.is_empty() {
+            continue;
+        }
+        if let Some(hit_index) = lines.iter().position(|line| line.contains(&candidate)) {
+            return extract_section_around_index(&lines, hit_index);
+        }
+    }
+
+    // Last-ditch normalized substring search. Only fires when literal forms above all
+    // missed -- gives us slack when the doc's punctuation drifts from the citation.
+    // The 2-word floor stops single tokens from drive-by matching unrelated lines.
+    let normalized = normalize(marker);
+    if normalized.split_whitespace().count() >= 2
+        && let Some(hit_index) = lines.iter().position(|line| {
+            let line_norm = normalize(line);
+            !line_norm.is_empty() && line_norm.contains(&normalized)
+        })
+    {
+        return extract_section_around_index(&lines, hit_index);
+    }
+
+    None
 }
 
 fn extract_section_matching_heading(text: &str, needle: &str) -> Option<String> {
     let lines: Vec<&str> = text.lines().collect();
-    let normalized_needle = normalize(needle);
+    let mut needles: Vec<String> = literal_candidates(needle)
+        .into_iter()
+        .map(|candidate| normalize(&candidate))
+        .filter(|candidate| !candidate.is_empty())
+        .collect();
+    needles.dedup();
 
     for (index, line) in lines.iter().enumerate() {
-        if heading_level(line).is_some()
-            && normalize(heading_text(line)).contains(&normalized_needle)
-        {
-            return extract_section_from_heading(&lines, index);
+        if heading_level(line).is_none() {
+            continue;
+        }
+        let heading = normalize(heading_text(line));
+        if heading.is_empty() {
+            continue;
+        }
+
+        for needle_norm in &needles {
+            // Original direction -- the historical behaviour; keep single-word matches valid.
+            if heading.contains(needle_norm) {
+                return extract_section_from_heading(&lines, index);
+            }
+            // Reverse direction handles a long descriptive citation wrapping around a
+            // shorter heading. Floor on heading side prevents single-token headings from
+            // grabbing every citation that happens to mention them.
+            if heading.split_whitespace().count() >= 2 && needle_norm.contains(&heading) {
+                return extract_section_from_heading(&lines, index);
+            }
         }
     }
 
     None
+}
+
+fn literal_candidates(citation: &str) -> Vec<String> {
+    let trimmed = citation.trim().to_string();
+    let canonical = canonicalize_citation(&trimmed);
+
+    let mut out = Vec::with_capacity(2);
+    out.push(trimmed.clone());
+    if !canonical.is_empty() && canonical != trimmed {
+        out.push(canonical);
+    }
+    out
+}
+
+// Trims the descriptive crud Shredder likes to bolt onto traces_to entries:
+// role-prefixes ("Cross-cutting:", "NFR:"), leading section markers ("§4 ", "§4.2 "),
+// and trailing parentheticals (" (§4 note: Tool is render-only)"). Returns whatever's
+// left so the resolver can match against the actual heading text in the doc.
+fn canonicalize_citation(citation: &str) -> String {
+    let mut s = citation.trim().to_string();
+
+    if let Some(colon_at) = s.find(": ") {
+        let prefix = &s[..colon_at];
+        let words: Vec<&str> = prefix.split_whitespace().collect();
+        let looks_like_role = !words.is_empty()
+            && words.len() <= 2
+            && words
+                .iter()
+                .all(|word| word.chars().all(|ch| ch.is_alphanumeric() || ch == '-'));
+        if looks_like_role {
+            s = s[colon_at + 2..].trim_start().to_string();
+        }
+    }
+
+    if let Some(rest) = strip_leading_section_marker(&s) {
+        s = rest;
+    }
+
+    while s.ends_with(')') {
+        if let Some(open_at) = s.rfind(" (") {
+            s.truncate(open_at);
+        } else {
+            break;
+        }
+    }
+
+    s.trim().to_string()
+}
+
+fn strip_leading_section_marker(s: &str) -> Option<String> {
+    let rest = s.strip_prefix('§')?;
+    let split_at = rest
+        .char_indices()
+        .find(|(_, ch)| !ch.is_ascii_digit() && *ch != '.')
+        .map(|(idx, _)| idx)
+        .unwrap_or(rest.len());
+
+    if split_at == 0 {
+        return None;
+    }
+
+    let after = &rest[split_at..];
+    let trimmed = after.trim_start();
+    if trimmed.len() == after.len() {
+        return None;
+    }
+
+    Some(trimmed.to_string())
+}
+
+fn citation_resolution_error(kind: &str, citation: &str) -> anyhow::Error {
+    let canonical = canonicalize_citation(citation);
+    let trimmed = citation.trim();
+    if !canonical.is_empty() && canonical != trimmed {
+        anyhow::anyhow!(
+            "failed to resolve {kind} citation `{citation}` (also tried canonicalized form `{canonical}`)"
+        )
+    } else {
+        anyhow::anyhow!("failed to resolve {kind} citation `{citation}`")
+    }
 }
 
 fn extract_section_around_index(lines: &[&str], hit_index: usize) -> Option<String> {
@@ -354,4 +510,174 @@ fn normalize(value: &str) -> String {
 
 fn display_path(path: &Path) -> String {
     path.to_string_lossy().into_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn canonicalize_strips_trailing_parenthetical() {
+        let raw = "World/Render context split (§4 note: Tool is render-only)";
+        assert_eq!(canonicalize_citation(raw), "World/Render context split");
+    }
+
+    #[test]
+    fn canonicalize_strips_role_prefix() {
+        assert_eq!(
+            canonicalize_citation("Cross-cutting: Single-source ground pick"),
+            "Single-source ground pick"
+        );
+        assert_eq!(
+            canonicalize_citation("NFR: Latency budget"),
+            "Latency budget"
+        );
+    }
+
+    #[test]
+    fn canonicalize_strips_leading_section_marker() {
+        assert_eq!(
+            canonicalize_citation("§4 World/Render context split"),
+            "World/Render context split"
+        );
+        assert_eq!(
+            canonicalize_citation("§4.2 World/Render context split"),
+            "World/Render context split"
+        );
+    }
+
+    #[test]
+    fn canonicalize_combines_strip_passes() {
+        let raw = "Cross-cutting: §4.2 World/Render context split (note: aside)";
+        assert_eq!(canonicalize_citation(raw), "World/Render context split");
+    }
+
+    #[test]
+    fn canonicalize_leaves_clean_citations_alone() {
+        assert_eq!(
+            canonicalize_citation("Plain heading text"),
+            "Plain heading text"
+        );
+    }
+
+    #[test]
+    fn canonicalize_does_not_strip_multiword_or_punctuated_prefix() {
+        // Prefix has slash punctuation -- not a role marker, leave it.
+        let raw = "World/Render context: split detail";
+        assert_eq!(canonicalize_citation(raw), raw);
+
+        // Three-word prefix is too long to be a role marker.
+        let raw = "Section four point two: rest of title";
+        assert_eq!(canonicalize_citation(raw), raw);
+    }
+
+    #[test]
+    fn canonicalize_handles_multiple_trailing_parens() {
+        assert_eq!(
+            canonicalize_citation("Title (note one) (note two)"),
+            "Title"
+        );
+    }
+
+    #[test]
+    fn extract_section_finds_via_canonical_form() {
+        let doc = "## Intro\n\nText.\n\n## World/Render context split\n\nBody of the section.\n\n## Other\n\nx";
+        let citation = "World/Render context split (§4 note: Tool is render-only)";
+        let excerpt = extract_section_containing_marker(doc, citation)
+            .expect("expected canonical form to resolve");
+        assert!(excerpt.contains("Body of the section"));
+        assert!(excerpt.starts_with("## World/Render context split"));
+    }
+
+    #[test]
+    fn extract_heading_match_is_bidirectional() {
+        let doc = "## Single-source ground pick\n\nA short note.\n";
+        let citation = "Cross-cutting: Single-source ground pick";
+        let excerpt =
+            extract_section_matching_heading(doc, citation).expect("heading match should hit");
+        assert!(excerpt.contains("A short note"));
+
+        // And the inverse: a heading that decorates around the citation.
+        let doc = "## Detailed: Single-source ground pick (subsystem)\n\nBody.\n";
+        let citation = "Single-source ground pick";
+        let excerpt = extract_section_matching_heading(doc, citation)
+            .expect("over-decorated heading should still match");
+        assert!(excerpt.contains("Body"));
+    }
+
+    #[test]
+    fn extract_preserves_single_word_forward_match() {
+        // Original-direction matches still work even for single-word needles -- the
+        // resolver finds the first heading whose normalized form contains the needle.
+        let doc = "## Foo\n\nshort.\n\n## Foo bar baz\n\nlong.\n";
+        let excerpt = extract_section_matching_heading(doc, "Foo")
+            .expect("forward single-word match should still resolve");
+        assert!(excerpt.starts_with("## Foo"));
+    }
+
+    #[test]
+    fn extract_reverse_direction_requires_multiword_heading() {
+        // Long descriptive citation, single-word heading: the reverse-direction match
+        // would technically fire (heading "abc" is contained in needle "abc def ghi"),
+        // but the floor blocks it. Without the floor, every short heading in the doc
+        // would grab unrelated long citations.
+        let doc = "## Tools\n\nshort.\n";
+        let citation = "Tools and infrastructure for ground-pick";
+        let excerpt = extract_section_matching_heading(doc, citation);
+        assert!(
+            excerpt.is_none(),
+            "single-word heading must not reverse-match a long descriptive citation"
+        );
+    }
+
+    #[test]
+    fn citation_resolution_error_includes_canonical_form() {
+        let err = citation_resolution_error("DDD", "Cross-cutting: Single-source ground pick");
+        let msg = err.to_string();
+        assert!(msg.contains("Cross-cutting: Single-source ground pick"));
+        assert!(msg.contains("Single-source ground pick"));
+        assert!(msg.contains("canonicalized form"));
+    }
+
+    #[test]
+    fn load_consolidated_adr_finds_docs_or_root() {
+        let tmp = std::env::temp_dir().join(format!(
+            "mutagen-evidence-adr-fallback-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(tmp.join("docs")).unwrap();
+        std::fs::write(tmp.join("docs/ADR.md"), "# ADR\n\n## ADR-001 X\n\nbody\n").unwrap();
+
+        let body = load_consolidated_adr(&tmp).unwrap().unwrap();
+        assert!(body.contains("ADR-001 X"));
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn load_consolidated_adr_returns_none_when_absent() {
+        let tmp = std::env::temp_dir().join(format!(
+            "mutagen-evidence-adr-absent-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&tmp).unwrap();
+        assert!(load_consolidated_adr(&tmp).unwrap().is_none());
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn citation_resolution_error_omits_canonical_when_unchanged() {
+        let err = citation_resolution_error("PRD", "Plain heading text");
+        let msg = err.to_string();
+        assert!(!msg.contains("canonicalized form"));
+        assert!(msg.contains("Plain heading text"));
+    }
 }
