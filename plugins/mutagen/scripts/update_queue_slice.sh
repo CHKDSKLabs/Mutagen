@@ -104,20 +104,34 @@ STATUS=$?
 set -e
 
 if [[ $STATUS -ne 0 ]]; then
-  emit_error "update_slice_runtime_failure" "mutagen harness update-slice runtime failed"
+  # If the harness already produced structured JSON on its way out the door, forward it so
+  # the orchestrator sees the real error instead of our generic wrapper.
+  if printf '%s' "$OUTPUT" | "$JQ_BIN" -e 'type == "object"' >/dev/null 2>&1; then
+    printf '%s\n' "$OUTPUT"
+    exit 1
+  fi
+  DETAIL="$(printf '%s' "$OUTPUT" | "$JQ_BIN" -Rsa . 2>/dev/null || printf '""')"
+  printf '{"ok":false,"error":"update_slice_runtime_failure","message":"mutagen harness update-slice exited %d","detail":%s}\n' "$STATUS" "$DETAIL"
+  exit 1
 fi
 
 if ! printf '%s' "$OUTPUT" | "$JQ_BIN" empty >/dev/null 2>&1; then
-  emit_error "update_slice_runtime_failure" "mutagen harness update-slice returned non-JSON output"
+  DETAIL="$(printf '%s' "$OUTPUT" | "$JQ_BIN" -Rsa . 2>/dev/null || printf '""')"
+  printf '{"ok":false,"error":"update_slice_runtime_failure","message":"mutagen harness update-slice returned non-JSON output","detail":%s}\n' "$DETAIL"
+  exit 1
 fi
 
 set +e
-"$SCRIPT_DIR/render_queue.sh" "$QUEUE_PATH" "$SLICEMAP_PATH" "$LEGACY_PATH" >/dev/null 2>&1
+RENDER_OUTPUT="$(
+  "$SCRIPT_DIR/render_queue.sh" "$QUEUE_PATH" "$SLICEMAP_PATH" "$LEGACY_PATH" 2>&1
+)"
 RENDER_STATUS=$?
 set -e
 
 if [[ $RENDER_STATUS -ne 0 ]]; then
-  emit_error "render_queue_failure" "queue updated but markdown render failed"
+  DETAIL="$(printf '%s' "$RENDER_OUTPUT" | "$JQ_BIN" -Rsa . 2>/dev/null || printf '""')"
+  printf '{"ok":false,"error":"render_queue_failure","message":"queue updated but markdown render failed (exit %d)","detail":%s}\n' "$RENDER_STATUS" "$DETAIL"
+  exit 1
 fi
 
 printf '%s\n' "$OUTPUT"

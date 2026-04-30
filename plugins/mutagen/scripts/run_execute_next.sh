@@ -182,6 +182,10 @@ LEGACY_PATH="$(absolute_path "$LEGACY_PATH")"
 COMPLETED_SLICES_JSON='[]'
 LOOP_GUARD=0
 PAUSE_SENTINEL="$WORKSPACE_ROOT/.mutagen/state/pause.json"
+# Re-running the validator on a stale-contract event is cheap and almost always the
+# right move (Shredder edited queue.json after a previous validation pass). Cap the
+# auto-reruns so a genuinely-broken validator can't trap us in a tight loop.
+STALE_RERUNS_REMAINING=2
 
 while true; do
   LOOP_GUARD=$((LOOP_GUARD + 1))
@@ -235,6 +239,48 @@ while true; do
 
   if [[ $RUN_STATUS -eq 2 ]]; then
     if printf '%s' "$RUN_OUTPUT" | "$JQ_BIN" empty >/dev/null 2>&1; then
+      stale_reason="$("$JQ_BIN" -r '.terminal.reason // ""' <<<"$RUN_OUTPUT" 2>/dev/null || true)"
+      if [[ "$stale_reason" == "queue_validation_stale" && $STALE_RERUNS_REMAINING -gt 0 ]]; then
+        STALE_RERUNS_REMAINING=$((STALE_RERUNS_REMAINING - 1))
+        printf 'queue validation marked stale -- auto-rerunning validator (attempts left after this: %d)\n' "$STALE_RERUNS_REMAINING" >&2
+        set +e
+        VALIDATOR_OUTPUT="$(bash "$SCRIPT_DIR/validate_queue.sh" "$QUEUE_PATH" 2>&1)"
+        VALIDATOR_STATUS=$?
+        set -e
+
+        if [[ $VALIDATOR_STATUS -eq 0 ]] && printf '%s' "$VALIDATOR_OUTPUT" | "$JQ_BIN" empty >/dev/null 2>&1; then
+          mkdir -p "$(dirname "$QUEUE_VALIDATION_PATH")"
+          printf '%s\n' "$VALIDATOR_OUTPUT" >"$QUEUE_VALIDATION_PATH"
+          continue
+        fi
+
+        # Validator itself rejected the queue or exploded. Surface the validator
+        # output so the human can see why instead of looping on stale forever.
+        validator_detail="$VALIDATOR_OUTPUT"
+        if ! printf '%s' "$validator_detail" | "$JQ_BIN" empty >/dev/null 2>&1; then
+          validator_detail="$("$JQ_BIN" -Rsa . <<<"$VALIDATOR_OUTPUT")"
+        else
+          validator_detail="$("$JQ_BIN" -c . <<<"$VALIDATOR_OUTPUT")"
+        fi
+        completed_from_terminal="$("$JQ_BIN" -c '.completed_slices // []' <<<"$RUN_OUTPUT")"
+        COMPLETED_SLICES_JSON="$(printf '%s' "$COMPLETED_SLICES_JSON" | "$JQ_BIN" -c --argjson entries "$completed_from_terminal" '. + $entries')"
+        "$JQ_BIN" -n \
+          --argjson completed_slices "$COMPLETED_SLICES_JSON" \
+          --argjson terminal "$RUN_OUTPUT" \
+          --argjson validator "$validator_detail" \
+          --argjson exit_code "$VALIDATOR_STATUS" \
+          '{
+            ok: false,
+            status: "queue_validation_rerun_failed",
+            completed_count: ($completed_slices | length),
+            completed_slices: $completed_slices,
+            completion_markers: ($completed_slices | map(.completion_marker)),
+            terminal: $terminal,
+            validator_rerun: { exit_code: $exit_code, output: $validator }
+          }'
+        exit 2
+      fi
+
       completed_from_terminal="$("$JQ_BIN" -c '.completed_slices // []' <<<"$RUN_OUTPUT")"
       COMPLETED_SLICES_JSON="$(printf '%s' "$COMPLETED_SLICES_JSON" | "$JQ_BIN" -c --argjson entries "$completed_from_terminal" '. + $entries')"
       "$JQ_BIN" -n \
