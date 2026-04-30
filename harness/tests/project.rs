@@ -1265,7 +1265,10 @@ fn project_execute_feature_prepares_next_feature_slice() {
     );
     match result.prepare.expect("prepare result should be present") {
         PrepareSelectedSliceResult::Ready { prepared } => {
-            assert_eq!(prepared.slice_id, flow.enqueue_feature.enqueued_slice_ids[0]);
+            assert_eq!(
+                prepared.slice_id,
+                flow.enqueue_feature.enqueued_slice_ids[0]
+            );
             assert!(prepared.claimed);
         }
         other => panic!("expected ready prepare result, got {other:?}"),

@@ -1,7 +1,5 @@
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
-use time::OffsetDateTime;
-use time::format_description::well_known::Rfc3339;
 use mutagen_harness::adapter::{HostKind, adapter_for, resolved_host_profile};
 use mutagen_harness::amend_scope::{AmendScopeOptions, MutationKind, amend_scope};
 use mutagen_harness::cohort::{PrepareCohortOptions, prepare_cohort};
@@ -58,6 +56,8 @@ use mutagen_harness::structural::{StructuralCheckOptions, structural_check};
 use mutagen_harness::validation::validate_queue_file;
 use std::path::PathBuf;
 use std::time::Duration;
+use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum InferenceProviderArg {
@@ -1382,17 +1382,20 @@ fn main() -> Result<()> {
             if text_only {
                 println!("{}", response.first_text().unwrap_or(""));
             } else {
-                println!("{}", serde_json::to_string_pretty(&serde_json::json!({
-                    "provider": provider.name(),
-                    "endpoint": options.endpoint,
-                    "model_key_or_id": options.model_key_or_id,
-                    "resolved_model_id": resolved_id,
-                    "id": response.id,
-                    "model": response.model,
-                    "text": response.first_text(),
-                    "finish_reason": response.choices.first().and_then(|c| c.finish_reason.clone()),
-                    "usage": response.usage,
-                }))?);
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "provider": provider.name(),
+                        "endpoint": options.endpoint,
+                        "model_key_or_id": options.model_key_or_id,
+                        "resolved_model_id": resolved_id,
+                        "id": response.id,
+                        "model": response.model,
+                        "text": response.first_text(),
+                        "finish_reason": response.choices.first().and_then(|c| c.finish_reason.clone()),
+                        "usage": response.usage,
+                    }))?
+                );
             }
         }
         Command::ValidateQueue { queue } => {

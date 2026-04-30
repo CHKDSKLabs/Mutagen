@@ -2,13 +2,24 @@
   <img src="assets/mutagen.png" alt="Mutagen — Rust harness for Claude + Codex" width="320">
 </p>
 
-# Mutagen — agentic design workflow marketplace
+# Mutagen
 
-A dual-harness plugin marketplace. Ships one plugin today — **`mutagen`** —
-with both a Claude Code manifest and a Codex manifest under the same plugin
-root, so one directory feeds both CLIs.
+A Rust harness that runs an agentic design workflow on top of Claude Code and
+Codex CLI. Mutagen owns the things prompts can't be trusted with — queue
+selection, stage transitions, scope enforcement, evidence bundling, retry
+policy, and persisted verdicts — and hands the rest to a fixed cast of
+personas (April → Shredder → Karai → Bebop / Baxter / Krang / Chaplin / Tatsu /
+Metalhead → Bishop → Tiger Claw → Splinter). The pipeline turns a five-document
+upstream design bundle (PRD / ADR / DDD / ISC / DSD) into dependency-ordered
+slices, dispatches each slice to the right executor, and gates the result on
+adversarial review before it touches the queue.
+
+If a behavior matters, the harness enforces it or records it. If the only
+control is "the prompt said pretty please," that is not a control plane.
 
 ## Install
+
+Mutagen ships as a plugin so the same workflow drops into both supported hosts.
 
 ### Claude Code
 
@@ -17,85 +28,77 @@ root, so one directory feeds both CLIs.
 /plugin install mutagen@mutagen-marketplace
 ```
 
-Verify: `/plugin marketplace list` and `/plugin list`.
+Verify with `/plugin marketplace list` and `/plugin list`.
 
 ### Codex CLI
 
 Clone this repo, then register the marketplace entry at
-`~/.agents/plugins/marketplace.json` (or the repo-local
-`.agents/plugins/marketplace.json` that ships here), pointing at the same
-`plugins/mutagen/` folder. Export `MUTAGEN_ROOT` to that absolute path in
-your shell rc so the skill bodies can resolve it:
+`~/.agents/plugins/marketplace.json` (or use the repo-local
+`.agents/plugins/marketplace.json` that ships here), pointing at
+`plugins/mutagen/`. Export `MUTAGEN_ROOT` so skill bodies can resolve it:
 
 ```bash
 export MUTAGEN_ROOT="/absolute/path/to/Mutagen/plugins/mutagen"
 ```
 
-Codex discovers skills under `plugins/mutagen/skills/<name>/SKILL.md`
-automatically. Invoke with `$mutagen-slice`, `$mutagen-execute-next`,
-`$mutagen-status`, `$mutagen-amend-scope`, `$mutagen-elicit`,
-`$mutagen-consolidate-advisories`, `$mutagen-setup-pushover`,
-`$mutagen-pause`, or `$mutagen-resume`. All nine skills are configured
-with `allow_implicit_invocation: false` — mutagen is a workflow, not a
-helpful tool, so explicit invocation is the only trigger.
+Codex auto-discovers skills under `plugins/mutagen/skills/<name>/SKILL.md`.
+Invoke with `$mutagen-slice`, `$mutagen-execute-next`, `$mutagen-status`,
+`$mutagen-amend-scope`, `$mutagen-elicit`, `$mutagen-consolidate-advisories`,
+`$mutagen-setup-pushover`, `$mutagen-pause`, or `$mutagen-resume`. All nine
+skills are configured with `allow_implicit_invocation: false` — Mutagen is a
+workflow, not a helpful tool, so explicit invocation is the only trigger.
 
 **Known degradation on Codex:** the `codex_hooks` feature is still under
-development and disabled on Windows, so the plugin does not ship
-manifest-level hooks. Scope manifests are written between stages for audit
-and visibility but enforcement is advisory (the agent is told its allowed
-globs; nothing blocks it). Reviewers are the backstop.
+development and disabled on Windows, so the plugin doesn't ship manifest-level
+hooks. Scope manifests are written between stages for audit and visibility, but
+enforcement is advisory (the agent is told its allowed globs; nothing blocks
+it). Reviewers are the backstop.
 
-## What's in this marketplace
+## What you get
 
-| Plugin | Description |
-|--------|-------------|
-| [`mutagen`](plugins/mutagen/) | End-to-end agentic design workflow — thirteen personas, nine Claude commands and the matching nine Codex skills (elicit, slice, execute-next, amend-scope, status, consolidate-advisories, setup-pushover, pause, resume), `PreToolUse` scope-enforcement hook *(Claude only)*, optional Pushover halt notifications, five-document upstream design bundle (PRD / ADR / DDD / ISC / DSD) with templates and authoring guides. |
+- **Thirteen personas** with bounded mandates — interviewer, architect,
+  dispatcher, six executors split by layer, two reviewers, a doc author, and a
+  scope guardian.
+- **Nine commands / skills** matching across Claude Code and Codex (elicit,
+  slice, execute-next, amend-scope, status, consolidate-advisories,
+  setup-pushover, pause, resume).
+- **A `PreToolUse` scope-enforcement hook** *(Claude Code only)* that blocks
+  writes outside the active slice's manifest before they happen.
+- **A canonical Rust runtime** (`mutagen-harness`) that owns queue mutation,
+  evidence assembly, structural checks, retry policy, and verdict persistence —
+  so behavior doesn't change just because you switched hosts.
+- **Five upstream design templates** (PRD / ADR / DDD / ISC / DSD) plus
+  authoring and review guides.
+- **Optional Pushover notifications** for halts, scope violations, and
+  retry-budget exhaustion.
 
-See [`plugins/mutagen/README.md`](plugins/mutagen/README.md) for the full story.
+For the full feature surface see [`plugins/mutagen/README.md`](plugins/mutagen/README.md).
+For harness internals see [`harness/README.md`](harness/README.md).
 
-For a populated reference workspace — five upstream design documents,
-a slice queue, and a Tiger Claw review report in their canonical
-filesystem layout — see [`examples/orders-demo/`](examples/orders-demo/).
+For a populated reference workspace — five upstream design documents, a slice
+queue, and a Tiger Claw review report in their canonical filesystem layout —
+see [`examples/orders-demo/`](examples/orders-demo/).
 
 ## Repository layout
 
 ```
 .
-├── .claude-plugin/
-│   └── marketplace.json                # Claude Code marketplace manifest
-├── .agents/
-│   └── plugins/
-│       └── marketplace.json            # Codex marketplace registration
-├── plugins/
-│   └── mutagen/                        # dual-harness plugin root
-│       ├── .claude-plugin/plugin.json  # Claude Code manifest
-│       ├── .codex-plugin/plugin.json   # Codex manifest
-│       ├── agents/                     # 13 Claude subagents + persona source-of-truth for Codex
-│       ├── commands/                   # 9 Claude slash commands
-│       ├── skills/                     # 9 Codex skills ($mutagen-*)
-│       │   └── <skill>/SKILL.md + agents/openai.yaml
-│       ├── bin/                        # agent.sh / agent.ps1 / agents-parallel.sh / claude-harness.sh
-│       ├── hooks/                      # Claude Code PreToolUse + PostToolUse
-│       ├── scripts/                    # harness wrappers, dispatch glue, render/render/notify helpers
-│       ├── templates/                  # PRD / ADR / DDD / ISC / DSD templates
-│       ├── guides/                     # authoring & review guides
-│       └── README.md
-├── harness/                            # Rust harness crate (mutagen-harness)
-├── examples/
-│   └── orders-demo/                    # populated reference workspace (read-only)
-└── README.md                           # this file
+├── .claude-plugin/marketplace.json     # Claude Code marketplace manifest
+├── .agents/plugins/marketplace.json    # Codex marketplace registration
+├── plugins/mutagen/                    # the plugin (dual-host)
+│   ├── .claude-plugin/plugin.json
+│   ├── .codex-plugin/plugin.json
+│   ├── agents/                         # 13 personas
+│   ├── commands/                       # 9 Claude slash commands
+│   ├── skills/                         # 9 Codex skills ($mutagen-*)
+│   ├── bin/                            # host adapters + harness launcher
+│   ├── hooks/                          # Claude PreToolUse + PostToolUse
+│   ├── scripts/                        # wrappers, dispatch glue, notify
+│   ├── templates/                      # PRD / ADR / DDD / ISC / DSD
+│   └── guides/                         # authoring & review guides
+├── harness/                            # mutagen-harness Rust crate
+└── examples/orders-demo/               # populated reference workspace
 ```
-
-## Contributing a companion plugin
-
-New plugins live under `plugins/<name>/` with their own manifest(s). For a
-dual-harness plugin, ship both `.claude-plugin/plugin.json` and
-`.codex-plugin/plugin.json`. Register in both marketplace files:
-
-- [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json) for Claude Code
-- [`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json) for Codex
-
-Bump the plugin's version on every release — clients cache.
 
 ## Validation
 

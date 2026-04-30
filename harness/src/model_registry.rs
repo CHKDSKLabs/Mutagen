@@ -145,10 +145,7 @@ pub const REGISTRY: &[SupportedModel] = &[
         lmstudio_repo: Some("lmstudio-community/DeepSeek-Coder-V2-Lite-Instruct-GGUF"),
         recommended_quant: "Q4_K_M",
         min_vram_gb: 12,
-        strengths: &[
-            ModelStrength::Coding,
-            ModelStrength::LongContext,
-        ],
+        strengths: &[ModelStrength::Coding, ModelStrength::LongContext],
         notes: "MoE — 16B params but only ~2.4B active per token. Fast on consumer GPUs with long context.",
     },
     SupportedModel {

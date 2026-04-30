@@ -1099,7 +1099,7 @@ fn normalize_serial_result(
                     .payload
                     .get("review_skipped")
                     .cloned()
-                    .unwrap_or_else(|| json!(false)),
+                    .unwrap_or(Value::Bool(false)),
                 "summary_path": run_output
                     .payload
                     .pointer("/finalize/summary_path")
@@ -1234,8 +1234,6 @@ fn queue_ready(queue_path: &Path, queue_validation_path: &Path) -> Result<QueueR
     if !queue_path.is_file() {
         let reason = if queue_validation_path.is_file() {
             "queue_validation_orphaned"
-        } else if !existing_shadow_files.is_empty() {
-            "queue_json_missing"
         } else {
             "queue_json_missing"
         };
@@ -1470,21 +1468,20 @@ fn resolve_mutagen_root(explicit: Option<&Path>, workspace_root: &Path) -> Resul
     if let Some(path) = explicit {
         candidates.push(path.to_path_buf());
     }
-    if let Ok(path) = env::var("MUTAGEN_ROOT") {
-        if !path.trim().is_empty() {
-            candidates.push(PathBuf::from(path));
-        }
+    if let Ok(path) = env::var("MUTAGEN_ROOT")
+        && !path.trim().is_empty()
+    {
+        candidates.push(PathBuf::from(path));
     }
     candidates.push(workspace_root.join("plugins/mutagen"));
     if let Ok(cwd) = env::current_dir() {
         candidates.push(cwd.join("plugins/mutagen"));
     }
-    if let Ok(exe) = env::current_exe() {
-        if let Some(bin_dir) = exe.parent() {
-            if let Some(plugin_root) = bin_dir.parent() {
-                candidates.push(plugin_root.to_path_buf());
-            }
-        }
+    if let Ok(exe) = env::current_exe()
+        && let Some(bin_dir) = exe.parent()
+        && let Some(plugin_root) = bin_dir.parent()
+    {
+        candidates.push(plugin_root.to_path_buf());
     }
 
     for candidate in candidates {
@@ -1824,10 +1821,10 @@ fn strip_frontmatter(raw: &str) -> String {
 }
 
 fn resolve_harness_binary() -> Result<PathBuf> {
-    if let Ok(path) = env::var("MUTAGEN_HARNESS_BIN") {
-        if !path.trim().is_empty() {
-            return Ok(PathBuf::from(path));
-        }
+    if let Ok(path) = env::var("MUTAGEN_HARNESS_BIN")
+        && !path.trim().is_empty()
+    {
+        return Ok(PathBuf::from(path));
     }
 
     env::current_exe().context("failed to resolve current harness executable")
@@ -1987,7 +1984,7 @@ fn pointer_or_bool(value: &Value, pointer: &str) -> Value {
     value
         .pointer(pointer)
         .cloned()
-        .unwrap_or_else(|| json!(false))
+        .unwrap_or(Value::Bool(false))
 }
 
 fn sha1_hex(input: &[u8]) -> Option<String> {

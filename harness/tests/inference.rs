@@ -147,10 +147,7 @@ fn complete_chat_round_trips_against_local_openai_compatible_server() {
 
     assert_eq!(response.first_text(), Some("pong"));
     assert_eq!(response.choices.len(), 1);
-    assert_eq!(
-        response.choices[0].finish_reason.as_deref(),
-        Some("stop")
-    );
+    assert_eq!(response.choices[0].finish_reason.as_deref(), Some("stop"));
     let usage = response.usage.expect("usage present");
     assert_eq!(usage.total_tokens, Some(5));
 
@@ -168,9 +165,18 @@ fn complete_chat_round_trips_against_local_openai_compatible_server() {
         .and_then(serde_json::Value::as_array)
         .expect("messages array");
     assert_eq!(messages.len(), 2);
-    assert_eq!(messages[0].get("role").and_then(|v| v.as_str()), Some("system"));
-    assert_eq!(messages[1].get("role").and_then(|v| v.as_str()), Some("user"));
-    assert_eq!(messages[1].get("content").and_then(|v| v.as_str()), Some("ping"));
+    assert_eq!(
+        messages[0].get("role").and_then(|v| v.as_str()),
+        Some("system")
+    );
+    assert_eq!(
+        messages[1].get("role").and_then(|v| v.as_str()),
+        Some("user")
+    );
+    assert_eq!(
+        messages[1].get("content").and_then(|v| v.as_str()),
+        Some("ping")
+    );
     assert_eq!(
         request_body
             .get("stream")

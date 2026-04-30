@@ -129,9 +129,7 @@ pub fn prepare_dispatch(options: PrepareDispatchOptions) -> Result<PrepareDispat
             scope_enforcement,
             options.dispatch_kind,
         ),
-        Stage::Review => {
-            prepare_review_dispatch(&paths, slice, &active_state, scope_enforcement)
-        }
+        Stage::Review => prepare_review_dispatch(&paths, slice, &active_state, scope_enforcement),
         Stage::StructuralCheck | Stage::StateRecord => bail!(
             "dispatch preparation is only supported for `author` and `review`, not `{}`",
             stage_name(active_state.stage)

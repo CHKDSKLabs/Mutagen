@@ -75,7 +75,9 @@ pub struct ChatResponse {
 
 impl ChatResponse {
     pub fn first_text(&self) -> Option<&str> {
-        self.choices.first().map(|choice| choice.message.content.as_str())
+        self.choices
+            .first()
+            .map(|choice| choice.message.content.as_str())
     }
 }
 
@@ -130,9 +132,8 @@ pub fn complete_chat(options: &ChatCompletionOptions) -> Result<ChatResponse> {
 
     let body = serde_json::to_string(&request).context("failed to serialize chat request")?;
 
-    let endpoint = ParsedEndpoint::parse(&options.endpoint).with_context(|| {
-        format!("failed to parse endpoint `{}`", options.endpoint)
-    })?;
+    let endpoint = ParsedEndpoint::parse(&options.endpoint)
+        .with_context(|| format!("failed to parse endpoint `{}`", options.endpoint))?;
 
     let response = http_post_json(&endpoint, CHAT_COMPLETIONS_PATH, &body, options.timeout)
         .with_context(|| {
@@ -220,7 +221,13 @@ pub(crate) fn http_post_json(
         .to_socket_addrs()
         .with_context(|| format!("failed to resolve {}:{}", endpoint.host, endpoint.port))?
         .next()
-        .ok_or_else(|| anyhow!("no addresses resolved for {}:{}", endpoint.host, endpoint.port))?;
+        .ok_or_else(|| {
+            anyhow!(
+                "no addresses resolved for {}:{}",
+                endpoint.host,
+                endpoint.port
+            )
+        })?;
 
     let mut stream = TcpStream::connect_timeout(&address, timeout)
         .with_context(|| format!("failed to connect to {address}"))?;
@@ -255,7 +262,9 @@ pub(crate) fn http_post_json(
     let mut raw = Vec::with_capacity(8 * 1024);
     let mut buf = [0u8; 8 * 1024];
     loop {
-        let read = stream.read(&mut buf).context("failed to read HTTP response")?;
+        let read = stream
+            .read(&mut buf)
+            .context("failed to read HTTP response")?;
         if read == 0 {
             break;
         }
@@ -278,8 +287,8 @@ pub(crate) fn parse_http_response(raw: &[u8]) -> Result<HttpResponse> {
     let header_bytes = &raw[..split];
     let body_bytes = &raw[split + 4..];
 
-    let header_text = std::str::from_utf8(header_bytes)
-        .context("HTTP response headers are not valid UTF-8")?;
+    let header_text =
+        std::str::from_utf8(header_bytes).context("HTTP response headers are not valid UTF-8")?;
     let mut lines = header_text.split("\r\n");
     let status_line = lines
         .next()
