@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.1
+
+Field-feedback patch release. Eight defects from the first external 0.2.3 run, fixed against the 0.3.x line.
+
+### Added
+
+- **`/mutagen-harness resume-slice` (and `plugins/mutagen/scripts/resume_slice.sh`).** Force-reset the active slice to a given slice id and stage. Rebuilds `active-slice.json` and the evidence bundle from the queue row, claims status to `in_progress`, and pivots the orchestrator to the requested stage. Refuses on terminal statuses (`completed`, `escalated`, `refused`) so a closed slice can't be silently reopened. Surfaces the prior active slice id and stage in the JSON result.
+
+### Changed
+
+- **Citation resolver loosened against descriptive prefixes and parentheticals.** Strips role-prefixes (`Cross-cutting:`, `NFR:`), leading section markers (`§4`, `§4.2`), and trailing parentheticals (`(§4 note: …)`). Tries literal then canonical forms. Heading match is bidirectional with a 2-word floor on the reverse direction, so single-word headings can't grab unrelated long citations. Errors include the canonical form when it differs from the original.
+- **ADR resolution falls back to a consolidated `docs/ADR.md` (or top-level `ADR.md`).** When no per-file `ADR-*.md` candidate matches, the resolver now extracts the section by heading the same way DDD/ISC/DSD already do.
+- **Author dispatch prompt now embeds the persona's structural-check contract verbatim.** `required_sections_for_author` in `structural.rs` is now the single source of truth; `render_author_prompt` consumes it. Prevents the failure mode where an author produces reasonable-looking output that the structural check then rejects for missing a marker nobody told them about.
+- **State Update marker errors surface a worked example and diagnose three common shapes.** Marker placed before the fenced block, marker prefixed with `+`/`-`/`@@` from a unified-diff render, marker buried after narrative inside the fence. Replaces the previous one-line "must start with a slice marker" rejection.
+- **`update_queue_slice.sh` and `run_execute_next.sh` forward harness errors instead of swallowing them.** When the harness exits non-zero with structured JSON, that JSON is forwarded; non-JSON stderr is wrapped into a `detail` field. Same pattern applied to the `render_queue` failure branch.
+- **`run_execute_next.sh` auto-reruns the validator on `queue_validation_stale`.** Capped at 2 retries. Writes the fresh report to `.mutagen/state/queue-validation.json` and continues. If the validator itself fails or rejects the queue, that surfaces as `queue_validation_rerun_failed` with the validator's actual output embedded — no more loop-on-stale-forever.
+
 ## 0.3.0
 
 Public-readiness pass. Harness dispatch hardening, the embedded HTTP dashboard
