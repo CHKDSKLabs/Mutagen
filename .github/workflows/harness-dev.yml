@@ -69,7 +69,7 @@ jobs:
 
       # DSD-602 / DSD-603: ban unwrap, expect, and panic in service production code.
       # Scoped to mutagen-service so core/cli's existing call sites aren't swept up.
-      - name: Service: no unwrap/expect/panic (DSD-602, DSD-603)
+      - name: "Service: no unwrap/expect/panic (DSD-602, DSD-603)"
         run: |
           cargo clippy --manifest-path harness/Cargo.toml -p mutagen-service --lib --bins --no-deps -- \
             -D warnings \
