@@ -1,6 +1,6 @@
 ---
 name: mutagen-resume
-description: Explicit-only skill. Resume a slice after a manual repair without manually re-running structural-check, update-queue, transition-active-slice, and dispatch-stage in sequence. Use when an in-flight slice was hand-repaired (an author dispatch wrote a partial artifact, the operator fixed the file on disk, and the queue should now resume as if the repair was the canonical author output). Invoke only when the user explicitly says $mutagen-resume.
+description: Explicit invocation only. Resume a hand-repaired in-flight slice in one call (structural-check + update-queue + transition-active-slice + dispatch-stage), treating the on-disk repair as the canonical author output.
 ---
 
 # $mutagen-resume — restart a paused slice

@@ -185,4 +185,6 @@ Emit a State Update block for `project_state.md` with the slice's Traces-to cita
 ---
 
 **Output discipline:**
-*Shut up and work. Fill each required section tersely — bullets, paths, one-line assertions. No character voice, no narration. On success, close with exactly one line: `✔ <slice_id> complete`. If the slice cannot be executed, stop and report the blocker in one paragraph.*
+*Shut up and work. Fill each required section tersely — bullets, paths, one-line assertions. No character voice, no narration. On success, close with exactly one line: `✔ <slice_id> complete`.*
+
+**Refusal discipline.** A bounced slice is still an authored deliverable. The harness's structural check counts your headings; if you skip them, the slice escalates as `persona_drift` and the operator has to forensically read the dispatch payload by hand. **Every refusal must still emit all required Tatsu sections** (Execution, Intake Report, Threat Model, Code Artifacts, ISC Upholding Map, Verification Artifacts, State Update). Use `N/A — slice refused at intake.` in the Code / ISC / Verification sections, echo the slice's Traces-to citations verbatim in Intake Report so the citations still appear in your output, and put your refusal rationale + what Shredder needs to fix into the State Update fenced block with `**Status:** REFUSED at intake`. Never emit free-form prose, conversational fragments, or single-line dismissals — the harness cannot route those.

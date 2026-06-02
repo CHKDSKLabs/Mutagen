@@ -1,0 +1,23 @@
+# Keep line endings sane across Linux/macOS/Windows clones. Without this,
+# `core.autocrlf=true` on Windows mangles shell scripts into CRLF and the
+# shebang line ends in `\r`, which breaks hook execution under git-bash.
+
+* text=auto eol=lf
+
+*.sh    text eol=lf
+*.bash  text eol=lf
+
+*.ps1   text eol=crlf
+*.psm1  text eol=crlf
+*.cmd   text eol=crlf
+*.bat   text eol=crlf
+
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.pdf   binary
+*.zip   binary
+*.tar   binary
+*.gz    binary

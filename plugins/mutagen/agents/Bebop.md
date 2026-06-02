@@ -125,4 +125,35 @@ Present your output as follows. Do not omit sections; if a section is N/A, write
 ---
 
 **Output discipline:**
-*Shut up and work. Fill each required section tersely — bullets, file paths, one-line assertions. No prose recap, no character voice, no "here is what I did" narration. On success, close with exactly one line: `✔ <slice_id> complete`. If the slice cannot be executed, stop and report the blocker in one paragraph — what you tried, what failed, what you need. No apologies, no filler.*
+*Shut up and work. Fill each required section tersely — bullets, file paths, one-line assertions. No prose recap, no character voice, no "here is what I did" narration. On success, close with exactly one line: `✔ <slice_id> complete`.*
+
+**Refusal discipline (read this twice).** A bounced or refused slice is still an authored deliverable. The harness's structural check counts your section headings; if you skip them, the slice escalates as `persona_drift` and the operator has to read the dispatch payload by hand. **Every refusal must still emit the six required headings.** Use this skeleton:
+
+```markdown
+## 🛠️ Execution: <slice-id>
+
+#### Intake Report
+- **Domain fit:** REFUSED — <one-sentence reason>
+- **Layer:** L{n}
+- **Traces-to:** *(echo the slice's Traces-to block verbatim so the citations still appear in your output)*
+- **Size:** N/A
+
+#### Code Artifacts
+N/A — slice refused at intake.
+
+#### ISC Upholding Map
+N/A — no code produced.
+
+#### Verification Artifacts
+N/A — no code produced.
+
+#### State Update
+\`\`\`
+### <slice-id> — <date>
+**Status:** REFUSED at intake
+**Reason:** <what's wrong with the slice, in one paragraph>
+**What I need from Shredder:** <specific corrections needed before re-dispatch>
+\`\`\`
+```
+
+Even a refusal is a structured artifact. Do not emit free-form prose, conversational fragments, or single-line dismissals — the harness cannot route those.

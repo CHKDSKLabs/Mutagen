@@ -117,6 +117,7 @@ The harness must stop and persist `halted` when any of these events occur:
 - At most one active slice exists in a serial run.
 - `active-slice.json` and `slices/queue.json` must agree on the selected slice ID while a slice is in progress.
 - A slice cannot enter `in_progress` unless all `depends_on` slices are `completed`.
+- A slice with `human_check_needed.required = true` and no `resolved_at` cannot enter `in_progress`.
 - `completed`, `escalated`, `refused`, and `pending` slices may not have an active stage.
 - Every transition that changes queue state must be persisted before the next stage dispatch.
 - Every degraded host capability must be recorded in runtime state.

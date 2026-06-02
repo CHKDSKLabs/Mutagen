@@ -1,6 +1,6 @@
 ---
 name: mutagen-status
-description: Explicit-only skill. Read-only report on the mutagen workflow — upstream document status, April's Readiness Brief, Shredder's Validation Report, pipeline mode, slice queue progress, harness queue validation, active slice, heartbeat telemetry, gate telemetry, open escalations, recent reviews. Invoke only when the user explicitly says $mutagen-status.
+description: Explicit invocation only. Read-only report on the mutagen workflow: upstream docs, April readiness, Shredder validation, pipeline mode, queue progress, active slice, heartbeat/gate telemetry, open escalations, recent reviews.
 ---
 
 # $mutagen-status — report on the workflow
@@ -26,14 +26,27 @@ action.
    if present. Report `date`, per-document status, Shredder readiness
    projection (green / yellow / red), `recommendation`. If present, trust it
    over re-computing from raw docs. If absent, fall back to step 1.
-3. **Shredder's Validation Report.** Read `.mutagen/state/validation-report.json`
+3. **Elicitation checkpoint.** Read `.mutagen/state/elicitation.jsonl` if
+   present. Each line is one April turn. Report:
+   - `total_turns` and `last_turn` number.
+   - `last_mode` (kickoff / gap-fill / iteration / resume), `last_ts`,
+     `last_user_message_summary`.
+   - `unanswered_questions` — questions present in any prior `questions_asked`
+     but not yet present in any later `answers_recorded[].q`.
+   - `open_tbds` from the latest record.
+   - Whether the latest record set `readiness_brief_emitted: true`.
+   - `malformed_lines` count if any line failed to parse — flag as a
+     recoverability gap that must be repaired before the next April turn.
+   The checkpoint is what makes a fresh April spawn resumable. Its presence
+   with no upstream docs yet means an interview is in progress, not stalled.
+4. **Shredder's Validation Report.** Read `.mutagen/state/validation-report.json`
    if present. Report `date`, `bundle_ready`, summarise `readiness_issues`
    and `validation_findings`. Flag as stale if the bundle has been edited
    since.
-4. **Pipeline mode.** Read `.claude/workflow.json`. Report mode
+5. **Pipeline mode.** Read `.claude/workflow.json`. Report mode
    (`full` / `lightweight`), `review.max_retries`, heartbeat thresholds.
    Absent = default `full`, default retries = 2.
-5. **Slice queue.** Prefer `slices/queue.json`; fall back to
+6. **Slice queue.** Prefer `slices/queue.json`; fall back to
    `slices/slicemap.md` when JSON is missing, and only then to legacy
    `slices/queue.md` if needed. Report:
    - Total slices, grouped by layer.
@@ -41,7 +54,7 @@ action.
      `escalated`, `blocked_retry`.
    - Next pending slice: ID, assigned agent, layer, one-line objective,
      `attempts`, `review_required` (in lightweight mode).
-6. **Queue validation.** Read `.mutagen/state/queue-validation.json` if
+7. **Queue validation.** Read `.mutagen/state/queue-validation.json` if
    present. Treat it as the harness verdict on whether `slices/queue.json`
    is executable. Report:
    - `ok`, `error_count`, `warning_count`.
@@ -56,21 +69,21 @@ action.
      legacy reports without hash metadata.
    - If `slices/queue.json` is missing but the validator report exists,
      flag it as orphaned.
-7. **Active slice.** Read `.mutagen/state/active-slice.json` if present.
+8. **Active slice.** Read `.mutagen/state/active-slice.json` if present.
    Report slice ID, `stage`, `active_agent`, `host`, `attempts`, and any
    `degraded_capabilities`. If the file exists outside a
    `$mutagen-execute-next` run, flag it.
-8. **Heartbeat telemetry (only if an active slice exists).** Run
+9. **Heartbeat telemetry (only if an active slice exists).** Run
    `bash "$MUTAGEN_ROOT/scripts/heartbeat.sh" 300`. Report the JSON
    (`total`, `window_calls`, `bytes_last_window`, `last_run_length`). If
    `last_run_length >= LOOP_THRESHOLD` (default 5), flag a likely tool-call
    loop.
-9. **Gate telemetry.** From `slices/queue.json`, report Bishop and Tiger
-   Claw verdict counts across the last 10 completed slices.
-10. **Open escalations.** From `slices/queue.json`, list slices whose
-   `status` is `escalated`, `refused`, or `blocked_retry` with their
-   `escalation_reason`.
-11. **Reviews.** Count entries under `reviews/` and list the last three.
+10. **Gate telemetry.** From `slices/queue.json`, report Bishop and Tiger
+    Claw verdict counts across the last 10 completed slices.
+11. **Open escalations.** From `slices/queue.json`, list slices whose
+    `status` is `escalated`, `refused`, or `blocked_retry` with their
+    `escalation_reason`.
+12. **Reviews.** Count entries under `reviews/` and list the last three.
 
 ## Report
 
@@ -89,6 +102,17 @@ April Readiness Brief ({date} · {mode}):
   Shredder readiness: PRD 🟢 · ADR 🟢 · DDD 🟡 · ISC 🔴 · DSD 🟢
   Cross-doc issues: N                                (or "none noted")
   (or: no readiness brief on file — run $mutagen-elicit)
+
+Elicitation checkpoint (.mutagen/state/elicitation.jsonl):
+  Turns: N                                           (⚠ malformed lines: M, when present)
+  Last turn: N · mode: {kickoff|gap-fill|iteration|resume} · ts: {ts}
+  Last user msg: {one-line summary}
+  Unanswered questions: N
+    - {question}
+  Open <TBD>s: N
+    - {id} (owner: {who}) due {when}
+  Readiness brief on latest turn: true | false
+  (or: no checkpoint on file — a fresh April spawn would re-interview from kickoff)
 
 Shredder Validation Report ({date}):
   Bundle ready: true | false

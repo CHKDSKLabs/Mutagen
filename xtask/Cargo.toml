@@ -1,0 +1,15 @@
+[package]
+name = "xtask"
+version.workspace = true
+edition.workspace = true
+publish = false
+workspace = "../harness"
+
+[[bin]]
+name = "xtask"
+path = "src/main.rs"
+
+[dependencies]
+mutagen-service = { path = "../harness/service" }
+anyhow.workspace = true
+clap.workspace = true

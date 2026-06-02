@@ -90,6 +90,24 @@ Required shape:
 This file is the durable human-readable closeout. The orchestrator should
 reference it instead of carrying author or reviewer transcripts forward.
 
+## State Target Contract
+
+`context_to_update` is parsed as a state target, not as a filesystem path.
+Valid values are:
+
+- `project_state.md`
+- `infrastructure_state.md`
+- `project_state.md § <section>`
+- `infrastructure_state.md § <section>`
+
+The `§` suffix names a markdown section inside the canonical state file.
+Parenthetical pseudo-paths such as `project_state.md (RBAC section)` are
+invalid. The harness rejects them because pretending a label is a path is how
+one gets a repo full of accidental paperwork.
+
+When a section target is present, `finalize-slice` applies the parsed
+`State Update` block under that section in the canonical file.
+
 ## Shredder Dual-Emission Contract
 
 Shredder emits two artifacts from the same slicing pass:

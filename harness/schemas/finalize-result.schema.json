@@ -22,7 +22,8 @@
     "layer",
     "layer_complete",
     "completed_in_layer",
-    "completion_marker"
+    "completion_marker",
+    "workspace_dirty"
   ],
   "properties": {
     "queue_path": {
@@ -108,6 +109,39 @@
       "type": "array",
       "items": {
         "$ref": "gate-verdict.schema.json#/$defs/notification"
+      }
+    },
+    "workspace_dirty": {
+      "$ref": "#/$defs/workspaceDirty"
+    }
+  },
+  "$defs": {
+    "workspaceDirty": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["checked", "modified_count", "untracked_count"],
+      "properties": {
+        "checked": {
+          "type": "boolean"
+        },
+        "skipped_reason": {
+          "type": "string"
+        },
+        "modified_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "untracked_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
       }
     }
   }

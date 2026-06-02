@@ -7,6 +7,7 @@
 # Editor / IDE state
 .vscode/
 .idea/
+.claude/scheduled_tasks.lock
 *.swp
 *.swo
 *~
@@ -46,3 +47,7 @@ dashboard.log
 # Claude / Codex local overrides
 .claude/settings.local.json
 .codex.local
+/dist/
+
+# QA crate is regenerated per slice; lockfile collisions break cohort merges
+tests/qa/**/Cargo.lock

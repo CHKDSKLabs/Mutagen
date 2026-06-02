@@ -6,7 +6,18 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/counter.sh\""
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/counter.sh\""
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/session_start_fetch_harness.sh\""
           }
         ]
       }

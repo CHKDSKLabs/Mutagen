@@ -6,14 +6,44 @@ on:
       - ".github/workflows/harness-dev.yml"
       - "harness/**"
       - "plugins/mutagen/**"
+      - "clippy.toml"
   pull_request:
     paths:
       - ".github/workflows/harness-dev.yml"
       - "harness/**"
       - "plugins/mutagen/**"
+      - "clippy.toml"
 
 jobs:
-  test-and-smoke:
+  # DSD-654: full workspace test suite on Linux, macOS, and Windows.
+  test:
+    name: cargo test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: harness
+          key: ${{ matrix.os }}
+
+      - name: Run harness tests
+        run: cargo test --manifest-path harness/Cargo.toml --workspace
+
+  lint-and-smoke:
+    name: lint, gates, smoke
     runs-on: ubuntu-latest
 
     steps:
@@ -29,20 +59,62 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: harness
+          key: lint
 
-      - name: Check formatting
-        run: cargo fmt --manifest-path harness/Cargo.toml --check
+      - name: Check formatting (DSD-600)
+        run: cargo fmt --manifest-path harness/Cargo.toml --all --check
 
-      - name: Lint with clippy (deny on any warning)
-        run: cargo clippy --manifest-path harness/Cargo.toml --all-targets -- -D warnings
+      - name: Lint with clippy (DSD-600, -D warnings)
+        run: cargo clippy --manifest-path harness/Cargo.toml --workspace --all-targets -- -D warnings
+
+      # DSD-602 / DSD-603: ban unwrap, expect, and panic in service production code.
+      # Scoped to mutagen-service so core/cli's existing call sites aren't swept up.
+      - name: Service: no unwrap/expect/panic (DSD-602, DSD-603)
+        run: |
+          cargo clippy --manifest-path harness/Cargo.toml -p mutagen-service --lib --bins --no-deps -- \
+            -D warnings \
+            -D clippy::unwrap_used \
+            -D clippy::expect_used \
+            -D clippy::panic
+
+      # ADR-0001 §5: axum is the only HTTP framework in mutagen-service.
+      - name: Framework gate — no actix/poem/warp/rocket in service (ADR-0001)
+        run: |
+          set -euo pipefail
+          if grep -REn --include='*.rs' 'actix_web::|poem::|warp::|rocket::' harness/service/src; then
+            echo "::error::ADR-0001 violation: forbidden HTTP framework reference in harness/service/src"
+            exit 1
+          fi
+          echo "ok: no forbidden framework imports"
 
       - name: Check plugin scripts
         run: |
           bash -n plugins/mutagen/scripts/*.sh
           bash -n plugins/mutagen/bin/*.sh
 
-      - name: Run harness tests
-        run: cargo test --manifest-path harness/Cargo.toml
+      # ISC-013 / ADR-0002 / FR-17: committed docs/openapi.json must match
+      # generator output. Regenerate, then fail if the working tree drifted.
+      - name: OpenAPI drift check (ISC-013, FR-17)
+        run: |
+          set -euo pipefail
+          cargo run --manifest-path harness/Cargo.toml -p xtask -- openapi
+          if ! git diff --exit-code -- docs/openapi.json; then
+            echo "::error::docs/openapi.json is stale — run 'cargo run -p xtask -- openapi' and commit."
+            exit 1
+          fi
+
+      # FR-17 release gate: prove the committed spec is consumable by the
+      # downstream GUI repo's codegen (openapi-typescript).
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: OpenAPI codegen smoke (FR-17)
+        run: |
+          set -euo pipefail
+          npx --yes openapi-typescript@latest docs/openapi.json -o /tmp/types.d.ts
+          test -s /tmp/types.d.ts
 
       - name: Build packaged harness binary
         run: bash plugins/mutagen/scripts/build_harness_binary.sh --debug
@@ -52,13 +124,13 @@ jobs:
           set -euo pipefail
           workspace_root="$(mktemp -d)"
 
-          cargo run --quiet --manifest-path harness/Cargo.toml -- project create \
+          cargo run --quiet --manifest-path harness/Cargo.toml --bin mutagen-harness -- project create \
             --workspace-root "$workspace_root" \
             --name smoke-app \
             --stack vite-express-sqlite \
             --design-system plain-css
 
-          cargo run --quiet --manifest-path harness/Cargo.toml -- project dashboard \
+          cargo run --quiet --manifest-path harness/Cargo.toml --bin mutagen-harness -- project dashboard \
             --workspace-root "$workspace_root" >"$workspace_root/dashboard.json"
 
           jq -e '.ok == true' "$workspace_root/dashboard.json" >/dev/null

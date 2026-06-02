@@ -1,6 +1,6 @@
 ---
 name: mutagen-slice
-description: Explicit-only skill. Run Shredder against the approved upstream design bundle (PRD / ADR / DDD / ISC / DSD) to produce a dependency-ordered slice queue. Invoke only when the user explicitly says $mutagen-slice. Do not trigger on ambient mentions of "slice" or "slicing".
+description: Explicit invocation only. Run Shredder against the approved upstream design bundle (PRD / ADR / DDD / ISC / DSD) to produce a dependency-ordered slice queue.
 ---
 
 # $mutagen-slice — run Shredder on the approved design bundle

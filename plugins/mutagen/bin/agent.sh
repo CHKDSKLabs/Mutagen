@@ -87,16 +87,31 @@ $prompt
 EOF
 
 if [[ -n "${MUTAGEN_AGENT_LAUNCHER:-}" ]]; then
-  exec "$MUTAGEN_AGENT_LAUNCHER" "$host" "$persona" "$profile" "$framing"
+  # Launcher contract (see issues/solved/CodexPro.md): a custom launcher
+  # inherits this script's framing verbatim and should not preserve stdin
+  # unless its target host profile explicitly asks for it. Mutagen does not
+  # feed agent input over stdin. To opt back in, the launcher author can set
+  # MUTAGEN_AGENT_LAUNCHER_KEEP_STDIN=1 before invoking agent.sh.
+  if [[ "${MUTAGEN_AGENT_LAUNCHER_KEEP_STDIN:-0}" != "1" ]]; then
+    exec "$MUTAGEN_AGENT_LAUNCHER" "$host" "$persona" "$profile" "$framing" </dev/null
+  else
+    exec "$MUTAGEN_AGENT_LAUNCHER" "$host" "$persona" "$profile" "$framing"
+  fi
 fi
 
 case "$host" in
   codex)
     codex="${CODEX_BIN:-codex}"
+    # codex exec on a non-TTY shell will block on "Reading additional input
+    # from stdin..." if it inherits a live stdin. Mutagen never feeds the
+    # author personas through stdin — the framing carries every byte the
+    # agent needs — so we close stdin explicitly. See issues/solved/CodexPro.md
+    # for the matching contract spec and the regression test that proves it.
     exec "$codex" exec \
       --profile "$profile" \
       --skip-git-repo-check \
-      "$framing"
+      "$framing" \
+      </dev/null
     ;;
   claude)
     # Default to the packaged non-interactive wrapper (claude --print

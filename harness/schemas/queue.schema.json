@@ -159,7 +159,9 @@
         },
         "context_to_update": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "pattern": "^(project_state\\.md|infrastructure_state\\.md)( § .+)?$",
+          "description": "Canonical state target. Use `project_state.md`, `infrastructure_state.md`, or `file § section`; never encode section labels as filenames."
         },
         "implementation_details": {
           "type": "array",

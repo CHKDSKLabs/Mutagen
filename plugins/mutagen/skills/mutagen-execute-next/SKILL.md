@@ -1,6 +1,6 @@
 ---
 name: mutagen-execute-next
-description: Explicit-only skill. Run the harness-owned mutagen execution loop until the queue clears, stalls, or escalates. Invoke only when the user explicitly says $mutagen-execute-next.
+description: Explicit invocation only. Run the harness-owned mutagen execution loop until the queue clears, stalls, or escalates.
 ---
 
 # $mutagen-execute-next

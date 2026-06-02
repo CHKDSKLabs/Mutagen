@@ -1,6 +1,6 @@
 ---
 name: mutagen-setup-pushover
-description: Explicit-only skill. First-run Pushover configuration wizard — detect current state, collect user key and app token, choose storage (env vars or workflow.json), optionally configure quiet events, send a test notification. Invoke only when the user explicitly says $mutagen-setup-pushover.
+description: Explicit invocation only. First-run Pushover configuration wizard: detect state, collect user key and app token, choose storage (env vars or workflow.json), optionally configure quiet events, send a test notification.
 ---
 
 # $mutagen-setup-pushover — first-run Pushover configuration wizard

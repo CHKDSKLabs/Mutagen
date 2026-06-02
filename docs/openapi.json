@@ -1,0 +1,1464 @@
+{
+  "$comment": "GENERATED — DO NOT EDIT. Run `cargo run -p xtask -- openapi` to regenerate.",
+  "components": {
+    "schemas": {
+      "ClientMessage": {
+        "description": "Client→server frame.",
+        "discriminator": {
+          "propertyName": "op"
+        },
+        "oneOf": [
+          {
+            "description": "Submit an Answer for an outstanding Question. Mismatched shape yields\n`error.validation` (INV-S4) — NOT a state transition.",
+            "properties": {
+              "answer": {},
+              "op": {
+                "enum": [
+                  "submit_answer"
+                ],
+                "type": "string"
+              },
+              "question_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "question_id",
+              "answer",
+              "op"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Test/dev hook so the harness can drive a question→answer round-trip\nend-to-end without a live April loop. Hidden behind the\n`cfg(any(test, feature = \"test-hooks\"))` switch on the server side;\nthe DTO stays here because the OpenAPI surface is one schema.",
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "op": {
+                "enum": [
+                  "issue_question"
+                ],
+                "type": "string"
+              },
+              "payload": {
+                "nullable": true
+              },
+              "prompt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "prompt",
+              "kind",
+              "op"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "CommandAcceptedDto": {
+        "description": "202 body returned by every Workflow Command (DSD-322: silent success\nis forbidden — every accepted command echoes back a small envelope so\nthe caller has something to correlate against the WS broadcast).",
+        "properties": {
+          "accepted_at": {
+            "description": "Wall-clock when the State Update record was appended (DSD-622).",
+            "type": "string"
+          },
+          "command": {
+            "description": "Stable command name: `dispatch_next` / `accept_review` / `escalate` /\n`finalize_slice` / `resume_slice`. Mirrors DDD §3.1 command names.",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "Project this command targets.",
+            "type": "string"
+          },
+          "request_id": {
+            "description": "Request-id correlator (same UUIDv7 returned in `X-Request-Id`).",
+            "type": "string"
+          },
+          "slice_id": {
+            "description": "Slice this command targets. `None` for `dispatch_next` because the\nnext slice is chosen inside the lock and broadcast over the WS.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "project_id",
+          "request_id",
+          "accepted_at"
+        ],
+        "type": "object"
+      },
+      "ConfirmEscalateDto": {
+        "description": "Response from POST /projects/{id}/slices/{slice_id}/confirm-escalate.",
+        "properties": {
+          "confirmation_token": {
+            "type": "string"
+          },
+          "expires_at": {
+            "description": "Wall-clock when the token expires (DSD-622). Five minutes from mint.",
+            "type": "string"
+          },
+          "slice_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirmation_token",
+          "slice_id",
+          "expires_at"
+        ],
+        "type": "object"
+      },
+      "EmptyCommandBody": {
+        "description": "Empty body shape accepted by accept / finalize / resume. Reserved for\nfuture optional notes; defining the type now keeps the OpenAPI surface\nstable as fields land.",
+        "properties": {
+          "note": {
+            "description": "Optional operator note recorded with the State Update. Not used by\nthe v1 state machine — present so future audit work has a place\nwithout a wire-shape change.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ErrorEnvelope": {
+        "properties": {
+          "code": {
+            "description": "Stable SCREAMING_SNAKE_CASE machine string. Once shipped, never reused.",
+            "type": "string"
+          },
+          "details": {
+            "description": "Optional structured detail. Omitted on auth failures per INV-A4.",
+            "nullable": true
+          },
+          "message": {
+            "description": "Human-readable, lowercase, no trailing period.",
+            "type": "string"
+          },
+          "request_id": {
+            "description": "UUIDv7 request correlator echoed in the `X-Request-Id` header.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "request_id"
+        ],
+        "type": "object"
+      },
+      "EscalateRequest": {
+        "description": "Body shape for POST /projects/{id}/slices/{slice_id}/escalate. The\nconfirmation token is minted by `confirm-escalate` (DSD-330).",
+        "properties": {
+          "confirmation_token": {
+            "description": "Token previously returned by `POST .../confirm-escalate` for this\nslice. Single-use, scoped to the slice it was minted against.",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Optional human-readable rationale recorded on the State Update.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirmation_token"
+        ],
+        "type": "object"
+      },
+      "HealthDto": {
+        "properties": {
+          "status": {
+            "description": "`ok` | `degraded` | `down`. Stringly-typed on the wire by design —\ndownstream clients pattern-match, they don't enumerate.",
+            "type": "string"
+          },
+          "version": {
+            "description": "The same string `VersionDto::service_version` reports.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "version"
+        ],
+        "type": "object"
+      },
+      "OriginDto": {
+        "properties": {
+          "id": {
+            "description": "`cli:<pid>` → \"<pid>\" as a string; `service:<session_id>` → session id.",
+            "type": "string"
+          },
+          "kind": {
+            "description": "`cli` | `service`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "type": "object"
+      },
+      "ProjectDto": {
+        "properties": {
+          "created_at": {
+            "description": "RFC 3339 / ISO 8601 UTC timestamp (DSD-622).",
+            "type": "string"
+          },
+          "name": {
+            "description": "Operator-supplied display name. Free-form, non-empty.",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "Stable UUIDv7 (DSD-623) assigned at registration. Sort-friendly.",
+            "type": "string"
+          },
+          "root": {
+            "description": "Canonical absolute path of the project root (ISC-008).",
+            "type": "string"
+          },
+          "status": {
+            "description": "Lifecycle: `registered` | `active` | `archived`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "name",
+          "root",
+          "status",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "ProjectListDto": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "QuestionEnvelopeDto": {
+        "description": "FR-11 / ISC-009 wire shape. The `schema_version` field is **required** on\nthe OpenAPI side because the domain constructor stamps it unconditionally.",
+        "properties": {
+          "kind": {
+            "description": "Question Kind discriminator: `free_text` | `multi_choice` |\n`multi_select` | `boolean` | `file_upload` (DDD §3.3 Value Objects).",
+            "type": "string"
+          },
+          "payload": {
+            "description": "Kind-specific payload (e.g. `options` for `multi_choice`). Absent for\n`free_text` and `boolean`. Schema-less by design — the discriminator\ndrives client rendering, not this field's shape.",
+            "nullable": true
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "question_id": {
+            "type": "string"
+          },
+          "schema_version": {
+            "description": "Chat-protocol schema version. Always set by the server; clients pin\nto a known version range (DDD MD-5).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "question_id",
+          "prompt",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "RegisterProjectRequest": {
+        "properties": {
+          "name": {
+            "description": "Display name for the project. Trimmed; must be non-empty.",
+            "type": "string"
+          },
+          "root": {
+            "description": "Absolute filesystem path to the project workspace.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "root",
+          "name"
+        ],
+        "type": "object"
+      },
+      "ServerMessage": {
+        "description": "Server→client frame. All events carry a snake_case discriminator (DSD-621).",
+        "discriminator": {
+          "propertyName": "event"
+        },
+        "oneOf": [
+          {
+            "description": "April issued a Question Envelope. Echoes the full envelope including\n`schema_version` (ISC-009).",
+            "properties": {
+              "envelope": {
+                "$ref": "#/components/schemas/QuestionEnvelopeDto"
+              },
+              "event": {
+                "enum": [
+                  "question_issued"
+                ],
+                "type": "string"
+              },
+              "session_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "session_id",
+              "envelope",
+              "event"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Answer accepted; echoed back so the GUI can clear its pending state\n(DDD §3.3 Domain Events `question.answered`).",
+            "properties": {
+              "answer_kind": {
+                "type": "string"
+              },
+              "event": {
+                "enum": [
+                  "question_answered"
+                ],
+                "type": "string"
+              },
+              "question_id": {
+                "type": "string"
+              },
+              "session_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "session_id",
+              "question_id",
+              "answer_kind",
+              "event"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "POL-S1: timeout fired before an Answer arrived.",
+            "properties": {
+              "event": {
+                "enum": [
+                  "question_timed_out"
+                ],
+                "type": "string"
+              },
+              "question_id": {
+                "type": "string"
+              },
+              "session_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "session_id",
+              "question_id",
+              "event"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "INV-S4 validation failure — kind mismatch or unknown question_id.",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "event": {
+                "enum": [
+                  "error_validation"
+                ],
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "question_id": {
+                "nullable": true,
+                "type": "string"
+              },
+              "session_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "session_id",
+              "code",
+              "message",
+              "event"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "L4-Session-003 placeholder — issued when a Workflow Command queues\n(POL-S4 first leg). Wired here so the taxonomy is complete in v1's\nOpenAPI schema and downstream GUI codegen sees it.",
+            "properties": {
+              "command": {
+                "type": "string"
+              },
+              "event": {
+                "enum": [
+                  "command_accepted"
+                ],
+                "type": "string"
+              },
+              "request_id": {
+                "type": "string"
+              },
+              "session_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "session_id",
+              "request_id",
+              "command",
+              "event"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "SliceCountsDto": {
+        "properties": {
+          "blocked_retry": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "completed": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "escalated": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "in_progress": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "pending": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "refused": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pending",
+          "in_progress",
+          "blocked_retry",
+          "completed",
+          "escalated",
+          "refused"
+        ],
+        "type": "object"
+      },
+      "SliceDto": {
+        "properties": {
+          "attempts": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "author_agent": {
+            "type": "string"
+          },
+          "bounded_context": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "layer": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "objective": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "target_loc": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "status",
+          "layer",
+          "bounded_context",
+          "author_agent",
+          "attempts",
+          "target_loc",
+          "objective"
+        ],
+        "type": "object"
+      },
+      "SliceQueueDto": {
+        "properties": {
+          "generated_at": {
+            "type": "string"
+          },
+          "pipeline_mode": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "slices": {
+            "items": {
+              "$ref": "#/components/schemas/SliceDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "project_id",
+          "pipeline_mode",
+          "generated_at",
+          "slices"
+        ],
+        "type": "object"
+      },
+      "StateLogPageDto": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/StateUpdateDto"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "description": "Opaque cursor (DSD-625) — base64url of the next byte offset. Absent at tail.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "StateUpdateDto": {
+        "properties": {
+          "at": {
+            "type": "string"
+          },
+          "body": {
+            "nullable": true
+          },
+          "event": {
+            "type": "string"
+          },
+          "origin": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OriginDto"
+              }
+            ],
+            "nullable": true
+          },
+          "schema_version": {
+            "format": "int32",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "slice_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "slice_id",
+          "event",
+          "at"
+        ],
+        "type": "object"
+      },
+      "StatusDto": {
+        "properties": {
+          "active_slice_id": {
+            "description": "Slice currently held in `.mutagen/state/active-slice.json`, if any.",
+            "nullable": true,
+            "type": "string"
+          },
+          "active_stage": {
+            "nullable": true,
+            "type": "string"
+          },
+          "last_state_update_at": {
+            "description": "Wall-clock of the last State Update record appended to the log (DSD-622).",
+            "nullable": true,
+            "type": "string"
+          },
+          "pipeline_mode": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "slice_counts": {
+            "$ref": "#/components/schemas/SliceCountsDto"
+          },
+          "total_slices": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "project_id",
+          "pipeline_mode",
+          "slice_counts",
+          "total_slices"
+        ],
+        "type": "object"
+      },
+      "VersionDto": {
+        "properties": {
+          "chat_protocol_schema_version": {
+            "description": "Wire-protocol schema version advertised by the chat WebSocket.",
+            "type": "string"
+          },
+          "harness_version": {
+            "description": "Harness library version linked into this service process.",
+            "type": "string"
+          },
+          "service_version": {
+            "description": "Service binary version (Cargo package version of `mutagen-service`).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "service_version",
+          "harness_version",
+          "chat_protocol_schema_version"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Mutagen workflow service. Spec is generated from handler annotations via utoipa per ADR-0002.",
+    "license": {
+      "name": ""
+    },
+    "title": "mutagen-service",
+    "version": "0.3.3"
+  },
+  "openapi": "3.0.3",
+  "paths": {
+    "/projects": {
+      "get": {
+        "operationId": "list_projects",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectListDto"
+                }
+              }
+            },
+            "description": "Registered projects (possibly empty)"
+          }
+        },
+        "tags": [
+          "projects"
+        ]
+      },
+      "post": {
+        "operationId": "register_project",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterProjectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDto"
+                }
+              }
+            },
+            "description": "Project registered"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Root already registered"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation failure"
+          }
+        },
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/projects/{project_id}": {
+      "delete": {
+        "operationId": "archive_project",
+        "parameters": [
+          {
+            "description": "Project UUIDv7",
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Project archived (workspace files left intact)"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unknown project_id"
+          }
+        },
+        "tags": [
+          "projects"
+        ]
+      },
+      "get": {
+        "operationId": "get_project",
+        "parameters": [
+          {
+            "description": "Project UUIDv7",
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDto"
+                }
+              }
+            },
+            "description": "Project detail"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unknown project_id"
+          }
+        },
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/projects/{project_id}/dispatch-next": {
+      "post": {
+        "operationId": "dispatch_next",
+        "parameters": [
+          {
+            "description": "Project UUIDv7",
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandAcceptedDto"
+                }
+              }
+            },
+            "description": "Command accepted; completion broadcast on WS"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unknown project_id"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Project lock held by another writer"
+          }
+        },
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/projects/{project_id}/session": {
+      "get": {
+        "operationId": "open_session",
+        "parameters": [
+          {
+            "description": "Project UUIDv7.",
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "DSD-302: chat-protocol schema version. Omit for current. See harness/service/docs/websocket.md for wire shape.",
+            "in": "query",
+            "name": "schema_version",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientMessage"
+              }
+            }
+          },
+          "description": "Client→server WS text-frame shape (informational; HTTP GET carries no body).",
+          "required": true
+        },
+        "responses": {
+          "101": {
+            "description": "WebSocket upgrade succeeded. See harness/service/docs/websocket.md for the chat-protocol frame schema (utoipa cannot fully express WS shape inline)."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unsupported schema_version."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Auth middleware rejected the upgrade handshake before the protocol switch."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Another session is already active on this project (ISC-015). Details carry `active_session_id`."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerMessage"
+                }
+              }
+            },
+            "description": "Server→client WS text-frame shape (informational; never emitted as an HTTP response)."
+          }
+        },
+        "tags": [
+          "session"
+        ]
+      }
+    },
+    "/projects/{project_id}/slices": {
+      "get": {
+        "operationId": "get_slices",
+        "parameters": [
+          {
+            "description": "Project UUIDv7",
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SliceQueueDto"
+                }
+              }
+            },
+            "description": "Slice queue snapshot"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unknown project_id"
+          }
+        },
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/projects/{project_id}/slices/{slice_id}/accept": {
+      "post": {
+        "operationId": "accept",
+        "parameters": [
+          {
+            "description": "Project UUIDv7",
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Slice id",
+            "in": "path",
+            "name": "slice_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmptyCommandBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandAcceptedDto"
+                }
+              }
+            },
+            "description": "Slice accept_review recorded"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unknown project_id"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Project lock held by another writer"
+          }
+        },
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/projects/{project_id}/slices/{slice_id}/confirm-escalate": {
+      "post": {
+        "operationId": "confirm_escalate",
+        "parameters": [
+          {
+            "description": "Project UUIDv7",
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Slice id",
+            "in": "path",
+            "name": "slice_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfirmEscalateDto"
+                }
+              }
+            },
+            "description": "Single-use confirmation token for /escalate"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unknown project_id"
+          }
+        },
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/projects/{project_id}/slices/{slice_id}/escalate": {
+      "post": {
+        "operationId": "escalate",
+        "parameters": [
+          {
+            "description": "Project UUIDv7",
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Slice id",
+            "in": "path",
+            "name": "slice_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EscalateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandAcceptedDto"
+                }
+              }
+            },
+            "description": "Slice escalated; State Update written"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unknown project_id"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Project lock held by another writer"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing or stale confirmation token"
+          }
+        },
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/projects/{project_id}/slices/{slice_id}/finalize": {
+      "post": {
+        "operationId": "finalize",
+        "parameters": [
+          {
+            "description": "Project UUIDv7",
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Slice id",
+            "in": "path",
+            "name": "slice_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmptyCommandBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandAcceptedDto"
+                }
+              }
+            },
+            "description": "Slice finalize recorded"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unknown project_id"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Project lock held by another writer"
+          }
+        },
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/projects/{project_id}/slices/{slice_id}/resume": {
+      "post": {
+        "operationId": "resume",
+        "parameters": [
+          {
+            "description": "Project UUIDv7",
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Slice id",
+            "in": "path",
+            "name": "slice_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmptyCommandBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandAcceptedDto"
+                }
+              }
+            },
+            "description": "Slice resume recorded"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unknown project_id"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Project lock held by another writer"
+          }
+        },
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/projects/{project_id}/state-log": {
+      "get": {
+        "operationId": "get_state_log",
+        "parameters": [
+          {
+            "description": "Project UUIDv7",
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Opaque pagination cursor (DSD-625)",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Soft cap on records; default 100, max 1000",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "nullable": true,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StateLogPageDto"
+                }
+              }
+            },
+            "description": "State update log page"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unknown project_id"
+          }
+        },
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/projects/{project_id}/status": {
+      "get": {
+        "operationId": "get_status",
+        "parameters": [
+          {
+            "description": "Project UUIDv7",
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusDto"
+                }
+              }
+            },
+            "description": "Workflow status snapshot"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unknown project_id"
+          }
+        },
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/version": {
+      "get": {
+        "operationId": "get_version",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionDto"
+                }
+              }
+            },
+            "description": "Service, harness, and chat-protocol versions"
+          }
+        },
+        "tags": [
+          "service"
+        ]
+      }
+    }
+  }
+}

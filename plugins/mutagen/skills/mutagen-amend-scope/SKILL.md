@@ -1,6 +1,6 @@
 ---
 name: mutagen-amend-scope
-description: Explicit-only skill. Invoke Traag to evaluate an in-flight scope-manifest amendment request. Traag decides ALLOW or DENY against the active slice's stage, agent, and the global denylist. Invoke only when the user explicitly says $mutagen-amend-scope and provides the path (or glob) to add, mutation kind, and a reason.
+description: Explicit invocation only. Traag evaluates an in-flight scope-manifest amendment (path/glob + mutation kind + reason) against the active slice's stage, agent, and the global denylist; decides ALLOW or DENY.
 ---
 
 # $mutagen-amend-scope — mediated scope amendment via Traag

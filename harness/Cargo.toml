@@ -1,15 +1,31 @@
-[package]
-name = "mutagen-harness"
-version = "0.3.1"
+[workspace]
+resolver = "2"
+members = ["core", "cli", "service", "../xtask"]
+
+[workspace.package]
+version = "0.4.0"
 edition = "2024"
 
-[dependencies]
+# DSD-602 / DSD-603: ban unwrap/expect/panic. Declared at workspace level for
+# discoverability; activation is per-crate via `[lints] workspace = true` and
+# via a CI step scoped to harness/service/src/** (see harness-dev.yml).
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+
+[workspace.dependencies]
 anyhow = "1.0.100"
 clap = { version = "4.5.51", features = ["derive"] }
 globset = "0.4.18"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 time = { version = "0.3.44", features = ["formatting"] }
-
-[dev-dependencies]
 tiny_http = "0.12"
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+utoipa = { version = "4", features = ["axum_extras"] }

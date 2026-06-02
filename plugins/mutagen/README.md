@@ -31,7 +31,7 @@ claude --plugin-dir /path/to/Mutagen/plugins/mutagen
 
 Requires `bash`, `jq`, and `git` on PATH for the shell helpers. The slice-authoring flow, host-profile resolution, queue mutation helpers, active-slice stage rotation, Stage 2 structural gate, and final slice closure delegate to the Rust harness.
 
-### Getting the harness binary
+### Installing the harness binary
 
 The harness binary is **not committed to the repo** (it would be platform-specific and would bloat clones). The plugin resolves the harness in this order:
 
@@ -40,19 +40,47 @@ The harness binary is **not committed to the repo** (it would be platform-specif
 3. `cargo run --manifest-path harness/Cargo.toml` as a source-checkout fallback (requires `cargo`).
 4. `mutagen-harness` on `PATH`.
 
-For most users:
+There are three install paths. End users do not need a Rust toolchain.
 
-- **Have Rust installed?** The source-checkout fallback (#3 above) is enough. The first invocation will compile the harness; subsequent runs use the cached build.
-- **Don't want to install Rust?** Download a pre-built binary from the [GitHub Releases page](https://github.com/CHKDSKLabs/Mutagen/releases) for your platform. Each tagged release ships archives for `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-apple-darwin`, `aarch64-apple-darwin`, and `x86_64-pc-windows-msvc`, each with a `.sha256` checksum. Extract the archive, then either drop `mutagen-harness` (or `.exe`) at `plugins/mutagen/bin/` or point `MUTAGEN_HARNESS_BIN` at it.
-- **Building from source for the canonical plugin-local path:** run
+#### 1. Automatic (default)
 
-  ```bash
-  bash plugins/mutagen/scripts/build_harness_binary.sh --release
-  ```
+The plugin will provision the binary on first use. A `SessionStart` hook nudges the download in the background as soon as the plugin loads, and `harness_runtime.sh` does a synchronous fetch on the first harness call if the background fetch hasn't landed yet. The fetch script picks the right archive for your host triple (`uname -sm` / `[Runtime.InteropServices.RuntimeInformation]`), downloads the matching `.tar.gz` or `.zip` from the GitHub Release, verifies the published `.sha256`, and extracts `mutagen-harness(.exe)` into `plugins/mutagen/bin/`.
 
-  That writes `plugins/mutagen/bin/mutagen-harness` (or `.exe` on Windows). The path is in `.gitignore`; this is a per-machine artifact, not something you commit.
+You can also kick the fetch by hand:
 
-With a packaged binary, end users do not need `cargo` or `rustc`. Without a packaged binary, development checkouts still need Rust installed. Without `jq` the scope guard fails open with a warning; set `STRICT_GUARD=1` to fail closed instead.
+```bash
+bash plugins/mutagen/scripts/fetch_harness_binary.sh
+```
+
+```powershell
+pwsh plugins/mutagen/scripts/fetch_harness_binary.ps1
+```
+
+Both scripts are idempotent — if the binary on disk already matches the plugin version, they exit silently. Set `MUTAGEN_NO_AUTOFETCH=1` to disable the automatic path entirely.
+
+#### 2. Manual download from Releases
+
+If your environment can't talk to GitHub, grab the archive yourself from the [Releases page](https://github.com/CHKDSKLabs/Mutagen/releases). Each tag ships archives for:
+
+- `x86_64-unknown-linux-gnu`
+- `aarch64-unknown-linux-gnu`
+- `x86_64-apple-darwin`
+- `aarch64-apple-darwin`
+- `x86_64-pc-windows-msvc`
+
+Each archive ships with a `.sha256` checksum. Verify, extract, and either drop `mutagen-harness` (or `.exe`) at `plugins/mutagen/bin/` or set `MUTAGEN_HARNESS_BIN` to the path. The latter is the right move for air-gapped installs and for shared binaries on a build host.
+
+#### 3. Build from source
+
+If you have Rust installed and want the canonical plugin-local path:
+
+```bash
+bash plugins/mutagen/scripts/build_harness_binary.sh --release
+```
+
+That writes `plugins/mutagen/bin/mutagen-harness` (or `.exe` on Windows). The path is in `.gitignore`; this is a per-machine artifact, not something you commit. The bare `cargo run --manifest-path harness/Cargo.toml` source-checkout fallback also works without producing a packaged binary, which is handy while iterating on the harness itself.
+
+Without `jq` on PATH the scope guard fails open with a warning; set `STRICT_GUARD=1` to fail closed instead.
 
 Start a new app-builder workspace with:
 

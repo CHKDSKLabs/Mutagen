@@ -1,0 +1,23 @@
+[package]
+name = "mutagen-core"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+fs2 = "0.4"
+globset.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sysinfo = { version = "0.32", default-features = false, features = ["system"] }
+time.workspace = true
+toml = "0.8"
+uuid = { version = "1", features = ["v7"] }
+
+[dev-dependencies]
+tempfile = "3"
+tiny_http.workspace = true

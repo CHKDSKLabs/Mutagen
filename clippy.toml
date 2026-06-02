@@ -1,0 +1,7 @@
+# Clippy config for the workspace.
+# DSD-602: unwrap/expect denials in harness/service/src/** are enforced via
+# a dedicated CI step (see .github/workflows/harness-dev.yml); tests are
+# allowed to use them.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true

@@ -193,4 +193,4 @@ manifest plus `.mutagen/state/amendments.jsonl` audit records itself.
 
 If a behavior matters, the harness should enforce it or record it. If the only control is "the prompt said pretty please," that is not a control plane.
 
-See [`RUNBOOK.md`](RUNBOOK.md) for operator workflows, [`DEPLOY_DEV.md`](DEPLOY_DEV.md) for running the harness as a development console, [`ARCHITECTURE.md`](ARCHITECTURE.md) for the layered design, [`STATE_MACHINE.md`](STATE_MACHINE.md) for the canonical runtime states, and [`ARTIFACT_SCHEMAS.md`](ARTIFACT_SCHEMAS.md) for the JSON / markdown artifact contracts.
+See [`RUNBOOK.md`](RUNBOOK.md) for operator workflows, [`DEPLOY_DEV.md`](DEPLOY_DEV.md) for running the harness as a development console, [`ARCHITECTURE.md`](ARCHITECTURE.md) for the layered design, [`STATE_MACHINE.md`](STATE_MACHINE.md) for the canonical runtime states, [`ARTIFACT_SCHEMAS.md`](ARTIFACT_SCHEMAS.md) for the JSON / markdown artifact contracts, and [`SERVICE_INTEGRATION.md`](SERVICE_INTEGRATION.md) for the service handoff contracts.

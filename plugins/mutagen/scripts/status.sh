@@ -384,6 +384,70 @@ else
   readiness_json='null'
 fi
 
+elicitation_path="$ROOT/.mutagen/state/elicitation.jsonl"
+if [[ -f "$elicitation_path" ]]; then
+  # JSONL: one JSON object per line. Tolerate malformed lines by counting them
+  # but not letting them blow up the slurp. We read with `jq -nc --slurpfile`
+  # which fails fast on a bad line — fall back to a manual line-by-line parse
+  # that emits null for unparseable rows so a half-corrupted checkpoint still
+  # gives a readable summary.
+  set +e
+  elicitation_records="$("$JQ_BIN" -cs '.' "$elicitation_path" 2>/dev/null)"
+  elicitation_slurp_status=$?
+  set -e
+
+  if [[ $elicitation_slurp_status -ne 0 || -z "$elicitation_records" ]]; then
+    # Manual line-by-line salvage.
+    elicitation_records="$("$JQ_BIN" -nc '[]')"
+    elicitation_malformed=0
+    while IFS= read -r line; do
+      [[ -z "$line" ]] && continue
+      if entry_json="$(printf '%s' "$line" | "$JQ_BIN" -c '.' 2>/dev/null)"; then
+        elicitation_records="$(printf '%s' "$elicitation_records" | "$JQ_BIN" -c --argjson e "$entry_json" '. + [$e]')"
+      else
+        elicitation_malformed=$((elicitation_malformed + 1))
+      fi
+    done < "$elicitation_path"
+  else
+    elicitation_malformed=0
+  fi
+
+  elicitation_json="$(printf '%s' "$elicitation_records" | "$JQ_BIN" -c \
+    --arg path ".mutagen/state/elicitation.jsonl" \
+    --argjson malformed "$elicitation_malformed" '
+    . as $records
+    | ($records | length) as $total
+    | (if $total == 0 then null else $records[-1] end) as $last
+    | (
+        [ $records[] | (.questions_asked // [])[] ] | unique
+      ) as $asked
+    | (
+        [ $records[] | (.answers_recorded // [])[] | (.q // empty) ] | unique
+      ) as $answered
+    | ($asked - $answered) as $unanswered
+    | {
+        path: $path,
+        present: ($total > 0),
+        total_turns: $total,
+        malformed_lines: $malformed,
+        last_turn: ($last.turn // null),
+        last_mode: ($last.mode // null),
+        last_ts: ($last.ts // null),
+        last_user_message_summary: ($last.user_message_summary // null),
+        mode_history: [ $records[] | (.mode // "unknown") ],
+        unanswered_questions: $unanswered,
+        open_tbds: ($last.open_tbds // []),
+        readiness_brief_emitted: ($last.readiness_brief_emitted // false)
+      }
+  ' 2>/dev/null)"
+
+  if [[ -z "$elicitation_json" ]]; then
+    elicitation_json='null'
+  fi
+else
+  elicitation_json='null'
+fi
+
 validation_path="$ROOT/.mutagen/state/validation-report.json"
 if [[ -f "$validation_path" ]]; then
   validation_stale=false
@@ -777,6 +841,7 @@ status_json="$("$JQ_BIN" -nc \
   --arg generated_at "$generated_at" \
   --argjson upstream_documents "$upstream_json" \
   --argjson readiness_brief "$readiness_json" \
+  --argjson elicitation_checkpoint "$elicitation_json" \
   --argjson validation_report "$validation_json" \
   --argjson workflow "$workflow_json" \
   --argjson queue "$queue_json" \
@@ -790,6 +855,7 @@ status_json="$("$JQ_BIN" -nc \
     generated_at: $generated_at,
     upstream_documents: $upstream_documents,
     readiness_brief: $readiness_brief,
+    elicitation_checkpoint: $elicitation_checkpoint,
     validation_report: $validation_report,
     workflow: $workflow,
     queue: $queue,
@@ -863,6 +929,9 @@ status_json="$(printf '%s' "$status_json" | "$JQ_BIN" -c '
         else empty end,
         if (.active_slice != null and .heartbeat != null and (.heartbeat.anomaly // "") == "tool_call_loop") then
           "Active slice shows a tool-call loop — investigate before re-dispatching."
+        else empty end,
+        if (.elicitation_checkpoint != null and (.elicitation_checkpoint.malformed_lines // 0) > 0) then
+          "Elicitation checkpoint has \(.elicitation_checkpoint.malformed_lines) malformed line(s) — repair .mutagen/state/elicitation.jsonl before next /mutagen:elicit turn."
         else empty end,
         if (.active_slice != null and ((.active_slice.degraded_capabilities // []) | length) > 0) then
           "Current slice is running in degraded host mode — check active-slice degraded capabilities before assuming hard enforcement or parallel support."
@@ -938,6 +1007,31 @@ printf '%s' "$status_json" | "$JQ_BIN" -r '
       + "  Recommendation: \(.readiness_brief.recommendation // "—")\n"
       + "  Shredder readiness: PRD \(readiness_color(.readiness_brief.shredder_readiness.prd // "")) · ADR \(readiness_color(.readiness_brief.shredder_readiness.adr // "")) · DDD \(readiness_color(.readiness_brief.shredder_readiness.ddd // "")) · ISC \(readiness_color(.readiness_brief.shredder_readiness.isc // "")) · DSD \(readiness_color(.readiness_brief.shredder_readiness.dsd // ""))\n"
       + "  Cross-doc issues: \((.readiness_brief.cross_consistency // []) | length | tostring)"
+    end
+  ),
+  "",
+  (
+    if .elicitation_checkpoint == null or (.elicitation_checkpoint.present // false) == false then
+      "Elicitation checkpoint: none on file (a fresh April spawn would re-interview from kickoff)"
+    else
+      "Elicitation checkpoint (\(.elicitation_checkpoint.path)):\n"
+      + "  Turns: \((.elicitation_checkpoint.total_turns // 0) | tostring)"
+      + (if (.elicitation_checkpoint.malformed_lines // 0) > 0 then "  ·  ⚠ malformed lines: \((.elicitation_checkpoint.malformed_lines) | tostring)" else "" end) + "\n"
+      + "  Last turn: \((.elicitation_checkpoint.last_turn // 0) | tostring) · mode: \(.elicitation_checkpoint.last_mode // "unknown") · ts: \(.elicitation_checkpoint.last_ts // "unknown")\n"
+      + "  Last user msg: \(.elicitation_checkpoint.last_user_message_summary // "—")\n"
+      + "  Unanswered questions: \((.elicitation_checkpoint.unanswered_questions // []) | length | tostring)"
+      + (
+        if ((.elicitation_checkpoint.unanswered_questions // []) | length) == 0 then ""
+        else "\n" + ((.elicitation_checkpoint.unanswered_questions // []) | map("    - " + .) | join("\n"))
+        end
+      ) + "\n"
+      + "  Open <TBD>s: \((.elicitation_checkpoint.open_tbds // []) | length | tostring)"
+      + (
+        if ((.elicitation_checkpoint.open_tbds // []) | length) == 0 then ""
+        else "\n" + ((.elicitation_checkpoint.open_tbds // []) | map("    - " + (if (. | type) == "object" then ((.id // "?") + (if .owner then " (owner: " + .owner + ")" else "" end) + (if .due then " due " + .due else "" end)) else (. | tostring) end)) | join("\n"))
+        end
+      ) + "\n"
+      + "  Readiness brief on latest turn: \(yesno(.elicitation_checkpoint.readiness_brief_emitted // false))"
     end
   ),
   "",

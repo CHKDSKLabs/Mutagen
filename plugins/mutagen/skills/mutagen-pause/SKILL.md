@@ -1,6 +1,6 @@
 ---
 name: mutagen-pause
-description: Explicit-only skill. Stage-boundary pause / resume / status for the mutagen execute-next loop. Drops a sentinel file at .mutagen/state/pause.json that makes the next iteration of $mutagen-execute-next exit cleanly before claiming a slice. Does NOT pre-empt work already in flight inside a dispatch — that is by design. Invoke only when the user explicitly says $mutagen-pause.
+description: Explicit invocation only. Drop a sentinel at .mutagen/state/pause.json so the next $mutagen-execute-next iteration exits cleanly at the stage boundary before claiming a slice. Does not pre-empt work already in flight.
 ---
 
 # $mutagen-pause — stage-boundary pause for the execute-next loop

@@ -1,6 +1,6 @@
 ---
 name: mutagen-consolidate-advisories
-description: Explicit-only skill. Turn the Bishop advisory backlog into a cleanup slice (or a short series) by dispatching Shredder against `.mutagen/state/advisory-backlog.jsonl`. Invoke only when the user explicitly says $mutagen-consolidate-advisories.
+description: Explicit invocation only. Dispatch Shredder against `.mutagen/state/advisory-backlog.jsonl` to turn the Bishop advisory backlog into a cleanup slice (or a short series).
 ---
 
 # $mutagen-consolidate-advisories — promote non-blocking findings into plannable work
