@@ -2,12 +2,13 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use crate::adapter::HostKind;
 use crate::cohort_result::{
     CollectCohortMemberResult, CollectCohortMemberResultOptions, collect_cohort_member_result,
 };
+use crate::shell::bash_command;
 
 #[derive(Debug, Clone)]
 pub struct DispatchCohortMembersOptions {
@@ -83,7 +84,7 @@ pub fn dispatch_cohort_members(
             .try_clone()
             .with_context(|| format!("failed to clone {}", display_path(&result_path)))?;
 
-        let child = Command::new("bash")
+        let child = bash_command()
             .arg(display_path(&runner_script_path))
             .arg("--workspace-root")
             .arg(display_path(&worktree_path))

@@ -27,6 +27,7 @@ pub mod runtime;
 pub mod scope_violation;
 pub mod selected_slice;
 pub mod session;
+pub mod shell;
 pub mod state;
 pub mod state_target;
 pub mod state_transition;
