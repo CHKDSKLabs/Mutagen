@@ -21,6 +21,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
+use sysinfo::{Pid, ProcessStatus, System};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
@@ -1730,7 +1731,7 @@ pub fn preview_start(
     let stderr = stdout
         .try_clone()
         .with_context(|| format!("failed to clone {}", display_path(&log_path)))?;
-    let child = Command::new("bash")
+    let child = bash_command()
         .arg("-lc")
         .arg(&plan.command)
         .current_dir(&workspace_root)
@@ -1836,10 +1837,12 @@ pub fn preview_stop(
     };
 
     if process_running(state.pid) {
-        let _ = Command::new("bash")
-            .arg("-lc")
-            .arg(format!("kill -TERM {}", state.pid))
-            .status();
+        let pid = Pid::from_u32(state.pid);
+        let mut sys = System::new();
+        sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true);
+        if let Some(process) = sys.process(pid) {
+            process.kill();
+        }
         thread::sleep(Duration::from_millis(100));
     }
 
@@ -1957,7 +1960,7 @@ pub fn run_project_command(options: ProjectRunCommandOptions) -> Result<ProjectR
         });
     }
 
-    let output = Command::new("bash")
+    let output = bash_command()
         .arg("-lc")
         .arg(&command)
         .current_dir(&workspace_root)
@@ -3086,34 +3089,93 @@ fn preview_lifecycle_result(input: PreviewLifecycleInput) -> ProjectPreviewLifec
     }
 }
 
+/// Bash on Windows is a minefield. A bare `bash` lookup grabs whatever lands
+/// first on PATH, and on GitHub's windows-latest runner that's the System32 WSL
+/// stub — which, with no distro installed, just exits 1 and drags every project
+/// command down with it. Git for Windows ships the bash we actually want, so go
+/// hunt that down first and only fall back to a bare `bash` when it's nowhere to
+/// be found (notably every non-Windows host, where bare `bash` is exactly right).
+fn bash_command() -> Command {
+    Command::new(resolve_bash())
+}
+
+#[cfg(not(windows))]
+fn resolve_bash() -> std::ffi::OsString {
+    std::ffi::OsString::from("bash")
+}
+
+#[cfg(windows)]
+fn resolve_bash() -> std::ffi::OsString {
+    git_bash_path()
+        .map(PathBuf::into_os_string)
+        .unwrap_or_else(|| std::ffi::OsString::from("bash"))
+}
+
+#[cfg(windows)]
+fn git_bash_path() -> Option<PathBuf> {
+    let mut git_roots: Vec<PathBuf> = Vec::new();
+    for var in ["ProgramFiles", "ProgramW6432", "ProgramFiles(x86)"] {
+        if let Some(dir) = std::env::var_os(var) {
+            git_roots.push(PathBuf::from(dir).join("Git"));
+        }
+    }
+    if let Some(dir) = std::env::var_os("LOCALAPPDATA") {
+        git_roots.push(PathBuf::from(dir).join("Programs").join("Git"));
+    }
+    if let Some(root) = git_root_from_path() {
+        git_roots.push(root);
+    }
+
+    git_roots.into_iter().find_map(|root| {
+        ["bin\\bash.exe", "usr\\bin\\bash.exe"]
+            .iter()
+            .map(|leaf| root.join(leaf))
+            .find(|candidate| candidate.is_file())
+    })
+}
+
+/// Belt-and-suspenders for installs that don't sit under a standard Program
+/// Files dir: walk PATH to find git.exe, then climb back up to the Git root that
+/// has a bash next to it.
+#[cfg(windows)]
+fn git_root_from_path() -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path) {
+        if !dir.join("git.exe").is_file() {
+            continue;
+        }
+        // git.exe lives in <root>\cmd or <root>\mingw64\bin depending on the
+        // install, so just climb parents until one looks like the Git root.
+        let mut ancestor: Option<&Path> = Some(dir.as_path());
+        while let Some(current) = ancestor {
+            if current.join("usr\\bin\\bash.exe").is_file()
+                || current.join("bin\\bash.exe").is_file()
+            {
+                return Some(current.to_path_buf());
+            }
+            ancestor = current.parent();
+        }
+    }
+    None
+}
+
 fn process_running(pid: u32) -> bool {
-    let kill_status = Command::new("bash")
-        .arg("-lc")
-        .arg(format!("kill -0 {pid}"))
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success());
-
-    if !kill_status {
+    // Used to shell out to `kill -0` + `ps`, which blew up on Windows: a bash
+    // child's `child.id()` is a Windows PID, but Git Bash's kill/ps speak MSYS
+    // PIDs, so the lookup never matched and every preview read as dead. sysinfo
+    // speaks native PIDs on every platform, so the namespaces finally agree.
+    if pid == 0 {
         return false;
     }
-
-    let output = Command::new("bash")
-        .arg("-lc")
-        .arg(format!("ps -o stat= -p {pid}"))
-        .output();
-
-    let Ok(output) = output else {
-        return true;
-    };
-
-    if !output.status.success() {
-        return false;
+    let pid = Pid::from_u32(pid);
+    let mut sys = System::new();
+    sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true);
+    match sys.process(pid) {
+        // A reaped-but-uncollected child still shows up as a zombie; it isn't
+        // doing anything, so don't count it as a live preview.
+        Some(process) => process.status() != ProcessStatus::Zombie,
+        None => false,
     }
-
-    let state = String::from_utf8_lossy(&output.stdout);
-    !state.trim_start().starts_with('Z')
 }
 
 fn wait_for_preview_ready(url: &str, timeout_seconds: u32) -> bool {
