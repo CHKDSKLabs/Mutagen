@@ -1059,11 +1059,43 @@ fn resolve_workspace_path(workspace_root: &Path, path: &Path) -> PathBuf {
 }
 
 fn display_relative_to_workspace(workspace_root: &Path, path: &Path) -> String {
+    strip_workspace_prefix(workspace_root, path)
+        .or_else(|| {
+            // `path` may carry a different—but equivalent—spelling of the
+            // workspace root: a caller can hand us an absolute summary_root
+            // under a symlinked temp dir (/var → /private/var on macOS) or an
+            // 8.3 / extended-length variant on Windows, while workspace_root
+            // has already been canonicalized by resolve_workspace_root.
+            // Canonicalize the deepest existing ancestor of `path` and retry
+            // so the dispatch log still records a workspace-relative path.
+            let canonical = canonicalize_existing_ancestor(path)?;
+            strip_workspace_prefix(workspace_root, &canonical)
+        })
+        .unwrap_or_else(|| normalize_path_separators(path))
+}
+
+fn strip_workspace_prefix(workspace_root: &Path, path: &Path) -> Option<String> {
     path.strip_prefix(workspace_root)
         .map(normalize_path_separators)
         .ok()
         .or_else(|| strip_normalized_workspace_prefix(workspace_root, path))
-        .unwrap_or_else(|| normalize_path_separators(path))
+}
+
+/// Canonicalize the deepest existing ancestor of `path`, re-appending the
+/// trailing components that do not yet exist on disk. Returns `None` only when
+/// no ancestor can be canonicalized (e.g. a relative path with no real root).
+fn canonicalize_existing_ancestor(path: &Path) -> Option<PathBuf> {
+    let mut suffix: Vec<std::ffi::OsString> = Vec::new();
+    let mut current = path;
+    loop {
+        if let Ok(canonical) = fs::canonicalize(current) {
+            let mut resolved = canonical;
+            resolved.extend(suffix.iter().rev());
+            return Some(resolved);
+        }
+        suffix.push(current.file_name()?.to_os_string());
+        current = current.parent()?;
+    }
 }
 
 fn display_path(path: &Path) -> String {

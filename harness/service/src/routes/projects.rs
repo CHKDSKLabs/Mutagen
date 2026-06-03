@@ -87,8 +87,21 @@ pub async fn register_project(
     if !missing.is_empty() {
         return validation_error(rid, missing);
     }
-    let root = root.unwrap();
-    let name = name.unwrap();
+    // pick_string records a missing-field error for every absent or
+    // non-string field, and we returned above when any were recorded, so both
+    // are Some here. Bind with let-else rather than unwrap to satisfy the
+    // service crate's `-D clippy::unwrap_used` gate; the else arm is
+    // unreachable but re-validates defensively instead of panicking.
+    let (Some(root), Some(name)) = (root, name) else {
+        return validation_error(
+            rid,
+            vec![field_error(
+                "(root)",
+                "required",
+                "root and name are required",
+            )],
+        );
+    };
 
     if name.trim().is_empty() {
         return validation_error(

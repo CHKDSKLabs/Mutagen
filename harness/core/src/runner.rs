@@ -1738,7 +1738,7 @@ fn launch_agent(
     // "Reading additional input from stdin...". Mutagen never feeds an agent
     // through stdin — framing carries every byte. Launchers that genuinely
     // want stdin can opt back in via MUTAGEN_AGENT_LAUNCHER_KEEP_STDIN=1.
-    if env::var("MUTAGEN_AGENT_LAUNCHER_KEEP_STDIN").as_deref() != Ok("1") {
+    if !should_inherit_launcher_stdin() {
         command.stdin(Stdio::null());
     }
 
@@ -1748,6 +1748,14 @@ fn launch_agent(
             host_kind_name(host)
         )
     })
+}
+
+/// CodexPro stdin contract: launched agents get `/dev/null` for stdin unless a
+/// launcher explicitly opts back in via `MUTAGEN_AGENT_LAUNCHER_KEEP_STDIN=1`.
+/// Factored out so the opt-in decision is unit-testable without depending on
+/// whatever stdin the test process itself happens to inherit under CI.
+fn should_inherit_launcher_stdin() -> bool {
+    env::var("MUTAGEN_AGENT_LAUNCHER_KEEP_STDIN").as_deref() == Ok("1")
 }
 
 fn host_command(host: HostKind, profile: &str, framing: String) -> Result<Command> {
@@ -2489,16 +2497,24 @@ mod stdin_dispatch_tests {
 
     #[test]
     fn launch_agent_closes_stdin_by_default() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         unsafe {
             env::remove_var("MUTAGEN_AGENT_LAUNCHER_KEEP_STDIN");
         }
 
         let (dir, mutagen_root) = make_persona_workspace();
+        // Probe stdin by reading a line: with stdin closed to /dev/null the
+        // read hits EOF immediately and returns non-zero, so we print
+        // STDIN_NULL. A plain `read` (rather than `read -t 0`) is deterministic
+        // across bash builds — `read -t 0` reports /dev/null as "data ready"
+        // on Linux but not on macOS, which is what made this test platform
+        // dependent. /dev/null never blocks, so the read can't hang.
         let launcher = write_launcher_script(
             dir.path(),
             "#!/usr/bin/env bash\n\
-             if read -r -t 0 line; then\n\
+             if IFS= read -r line; then\n\
                 printf 'STDIN_HAD_DATA: %s\\n' \"$line\"\n\
              else\n\
                 printf 'STDIN_NULL\\n'\n\
@@ -2531,52 +2547,43 @@ mod stdin_dispatch_tests {
     }
 
     #[test]
-    fn launch_agent_preserves_stdin_when_opt_in_is_set() {
-        let _guard = ENV_LOCK.lock().unwrap();
-
-        let (dir, mutagen_root) = make_persona_workspace();
-        // With stdin preserved the test process's own stdin is inherited.
-        // We can't easily feed it anything from a #[test] body, so the probe
-        // just records that the FD was *not* /dev/null — i.e. `read -t 0`
-        // would still timeout, but the launcher can tell by checking whether
-        // stdin is a regular file pointing at /dev/null. Simplest reliable
-        // probe: `[[ -e /proc/self/fd/0 ]]` + readlink comparison.
-        let launcher = write_launcher_script(
-            dir.path(),
-            "#!/usr/bin/env bash\n\
-             target=$(readlink /proc/self/fd/0 2>/dev/null || true)\n\
-             if [[ \"$target\" == /dev/null* ]]; then\n\
-                printf 'STDIN_IS_DEVNULL\\n'\n\
-             else\n\
-                printf 'STDIN_IS_INHERITED: %s\\n' \"$target\"\n\
-             fi\n",
-        );
-        let stdout_capture = dir.path().join("capture.txt");
+    fn keep_stdin_env_flips_the_inherit_decision() {
+        // The end-to-end "preserve" path inherits whatever stdin the test
+        // process itself has, which under CI is often /dev/null — making any
+        // process-level probe non-deterministic. The observable contract is the
+        // opt-in decision itself, so assert it directly. Guarded by ENV_LOCK
+        // because it mutates the same process-global env the launcher reads.
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
 
         unsafe {
-            env::set_var("MUTAGEN_AGENT_LAUNCHER", &launcher);
-            env::set_var("MUTAGEN_AGENT_LAUNCHER_KEEP_STDIN", "1");
-        }
-        let result = launch_agent(
-            dir.path(),
-            &mutagen_root,
-            HostKind::Codex,
-            "Probe",
-            "probe task",
-            &stdout_capture,
-        );
-        unsafe {
-            env::remove_var("MUTAGEN_AGENT_LAUNCHER");
             env::remove_var("MUTAGEN_AGENT_LAUNCHER_KEEP_STDIN");
         }
-
-        let status = result.expect("launcher should run");
-        assert!(status.success(), "launcher exit: {status:?}");
-        let captured = fs::read_to_string(&stdout_capture).expect("capture read");
         assert!(
-            !captured.contains("STDIN_IS_DEVNULL"),
-            "opt-in should preserve the inherited stdin — captured: {captured:?}"
+            !should_inherit_launcher_stdin(),
+            "stdin must default to closed when the opt-in env var is unset"
         );
+
+        unsafe {
+            env::set_var("MUTAGEN_AGENT_LAUNCHER_KEEP_STDIN", "1");
+        }
+        assert!(
+            should_inherit_launcher_stdin(),
+            "MUTAGEN_AGENT_LAUNCHER_KEEP_STDIN=1 must preserve inherited stdin"
+        );
+
+        unsafe {
+            env::set_var("MUTAGEN_AGENT_LAUNCHER_KEEP_STDIN", "yes");
+        }
+        assert!(
+            !should_inherit_launcher_stdin(),
+            "only the exact value `1` opts in; other truthy spellings stay closed"
+        );
+
+        unsafe {
+            env::remove_var("MUTAGEN_AGENT_LAUNCHER_KEEP_STDIN");
+        }
     }
 }
 
