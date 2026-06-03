@@ -806,7 +806,7 @@ dependencies = [
 
 [[package]]
 name = "mutagen-core"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -824,7 +824,7 @@ dependencies = [
 
 [[package]]
 name = "mutagen-harness"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -837,7 +837,7 @@ dependencies = [
 
 [[package]]
 name = "mutagen-service"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -2160,7 +2160,7 @@ checksum = "1ffae5123b2d3fc086436f8834ae3ab053a283cfac8fe0a0b8eaae044768a4c4"
 
 [[package]]
 name = "xtask"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "clap",

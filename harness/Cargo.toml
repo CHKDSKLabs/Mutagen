@@ -3,7 +3,7 @@ resolver = "2"
 members = ["core", "cli", "service", "../xtask"]
 
 [workspace.package]
-version = "0.4.0"
+version = "0.4.1"
 edition = "2024"
 
 # DSD-602 / DSD-603: ban unwrap/expect/panic. Declared at workspace level for
