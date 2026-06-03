@@ -340,8 +340,18 @@ async fn session_span_carries_session_id_and_project_id() {
 
     let writer = Capture::default();
     let subscriber = observability::build_subscriber("info", writer.clone());
+    // Install as the *global* default rather than a thread-local `set_default`:
+    // session.opened is emitted from the WebSocket upgrade future, which axum
+    // runs on a spawned task. A thread-local dispatcher only reaches that task
+    // by luck of the current-thread runtime sharing the test's thread, and the
+    // per-callsite Interest cache can be pinned to `Never` by a sibling test
+    // first — which is what made this flaky in CI. The global default is
+    // visible on every worker thread and rebuilds the interest cache. The
+    // unique `proj-span` project id keeps sibling session events that also
+    // reach the global writer from affecting the assertions below.
     let dispatch = tracing::Dispatch::new(subscriber);
-    let _guard = tracing::dispatcher::set_default(&dispatch);
+    tracing::dispatcher::set_global_default(dispatch)
+        .expect("global subscriber installs once per test binary");
 
     let state = fresh_state();
     let router = observability::wrap(session_router(state));

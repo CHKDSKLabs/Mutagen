@@ -8,6 +8,7 @@ use crate::queue_readiness::{QUEUE_CONTRACT_HASH_BASIS, queue_contract_hash};
 use crate::selected_slice::{
     PrepareSelectedSliceOptions, PrepareSelectedSliceResult, prepare_selected_slice,
 };
+use crate::shell::bash_command;
 use crate::state::ActiveSliceState;
 use crate::validation::{load_queue_file, validate_queue};
 use anyhow::{Context, Result, bail};
@@ -21,6 +22,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
+use sysinfo::{Pid, ProcessStatus, System};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
@@ -1730,7 +1732,7 @@ pub fn preview_start(
     let stderr = stdout
         .try_clone()
         .with_context(|| format!("failed to clone {}", display_path(&log_path)))?;
-    let child = Command::new("bash")
+    let child = bash_command()
         .arg("-lc")
         .arg(&plan.command)
         .current_dir(&workspace_root)
@@ -1836,10 +1838,12 @@ pub fn preview_stop(
     };
 
     if process_running(state.pid) {
-        let _ = Command::new("bash")
-            .arg("-lc")
-            .arg(format!("kill -TERM {}", state.pid))
-            .status();
+        let pid = Pid::from_u32(state.pid);
+        let mut sys = System::new();
+        sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true);
+        if let Some(process) = sys.process(pid) {
+            process.kill();
+        }
         thread::sleep(Duration::from_millis(100));
     }
 
@@ -1957,7 +1961,7 @@ pub fn run_project_command(options: ProjectRunCommandOptions) -> Result<ProjectR
         });
     }
 
-    let output = Command::new("bash")
+    let output = bash_command()
         .arg("-lc")
         .arg(&command)
         .current_dir(&workspace_root)
@@ -3087,33 +3091,22 @@ fn preview_lifecycle_result(input: PreviewLifecycleInput) -> ProjectPreviewLifec
 }
 
 fn process_running(pid: u32) -> bool {
-    let kill_status = Command::new("bash")
-        .arg("-lc")
-        .arg(format!("kill -0 {pid}"))
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success());
-
-    if !kill_status {
+    // Used to shell out to `kill -0` + `ps`, which blew up on Windows: a bash
+    // child's `child.id()` is a Windows PID, but Git Bash's kill/ps speak MSYS
+    // PIDs, so the lookup never matched and every preview read as dead. sysinfo
+    // speaks native PIDs on every platform, so the namespaces finally agree.
+    if pid == 0 {
         return false;
     }
-
-    let output = Command::new("bash")
-        .arg("-lc")
-        .arg(format!("ps -o stat= -p {pid}"))
-        .output();
-
-    let Ok(output) = output else {
-        return true;
-    };
-
-    if !output.status.success() {
-        return false;
+    let pid = Pid::from_u32(pid);
+    let mut sys = System::new();
+    sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true);
+    match sys.process(pid) {
+        // A reaped-but-uncollected child still shows up as a zombie; it isn't
+        // doing anything, so don't count it as a live preview.
+        Some(process) => process.status() != ProcessStatus::Zombie,
+        None => false,
     }
-
-    let state = String::from_utf8_lossy(&output.stdout);
-    !state.trim_start().starts_with('Z')
 }
 
 fn wait_for_preview_ready(url: &str, timeout_seconds: u32) -> bool {

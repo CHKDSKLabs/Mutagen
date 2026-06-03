@@ -181,8 +181,19 @@ async fn request_id_span_carries_required_fields() {
     let subscriber = observability::build_subscriber("info", writer.clone());
 
     let captured = {
+        // Install the capture subscriber as the *global* default rather than a
+        // thread-local `set_default`. The request is served on a task spawned
+        // by `boot`, so a thread-local dispatcher only reaches it by luck of
+        // the current-thread runtime sharing the test's thread — and the
+        // per-callsite Interest cache can be pinned to `Never` by a sibling
+        // test that hits the same callsite under the no-op global first.
+        // `set_global_default` is visible on every worker thread and rebuilds
+        // the interest cache, so capture is deterministic. The unique `/probe`
+        // path keeps sibling requests that also reach the global writer from
+        // affecting the assertions below.
         let dispatch = tracing::Dispatch::new(subscriber);
-        let guard = tracing::dispatcher::set_default(&dispatch);
+        tracing::dispatcher::set_global_default(dispatch)
+            .expect("global subscriber installs once per test binary");
 
         let router = wrap(Router::new().route("/probe", get(|| async { "pong" })));
         let (addr, tx, handle) = boot(router).await;
@@ -191,7 +202,6 @@ async fn request_id_span_carries_required_fields() {
             .expect("probe");
         tx.send(()).ok();
         handle.await.ok();
-        drop(guard);
         writer.take()
     };
 

@@ -2,13 +2,13 @@ use serde::Serialize;
 use serde_json::{Map, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use crate::notifications::{
     NotificationEvent, StopCondition, persona_drift_notification, slice_blocker_notification,
     structural_fail_notification,
 };
 use crate::queue::Slice;
+use crate::shell::bash_command;
 use crate::state_update::parse_state_update;
 use crate::validation::load_queue_file;
 
@@ -625,7 +625,7 @@ fn collect_loc(options: &StructuralCheckOptions) -> Value {
         .map(PathBuf::from)
         .unwrap_or(loc_script_path);
 
-    let output = match Command::new("bash")
+    let output = match bash_command()
         .arg(&command_path)
         .arg(&options.slice_id)
         .current_dir(&options.workspace_root)
