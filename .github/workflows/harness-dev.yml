@@ -19,12 +19,6 @@ jobs:
   test:
     name: cargo test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    # Windows is non-blocking for now: the project command-execution layer runs
-    # snippets through `bash -lc`, which on the windows-latest runner resolves to
-    # the WSL stub (no distro installed) rather than Git Bash, so the project.rs
-    # command/preview/verify tests fail with exit 1. Tracked for a fix on a
-    # Windows machine; the leg still runs so those failures stay visible.
-    continue-on-error: ${{ matrix.os == 'windows-latest' }}
     strategy:
       fail-fast: false
       matrix:
